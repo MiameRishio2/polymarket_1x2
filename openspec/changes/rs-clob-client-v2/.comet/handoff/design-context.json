@@ -1,0 +1,14 @@
+{
+  "change": "rs-clob-client-v2",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "e51a157d350e521c2c7be8ec986144db0a2776c1a8f9bab2fb86a3b538f4ed31",
+  "files": [
+    { "path": "openspec/changes/rs-clob-client-v2/proposal.md", "sha256": "db475aacb868973cb4632a6f8648bfb3836f37a1f02fe7a4f1fc76ede2c7b2c1" },
+    { "path": "openspec/changes/rs-clob-client-v2/design.md", "sha256": "6b63f33f10ba46eb9a213cf168740d4616a3e22833b6df2ebd041d5e4e013a5f" },
+    { "path": "openspec/changes/rs-clob-client-v2/tasks.md", "sha256": "4250a73a018671c068e794d8ade037ed7d2d7994ded1f356104bfa25993a5825" },
+    { "path": "openspec/changes/rs-clob-client-v2/specs/polymarket-ws-quotes/spec.md", "sha256": "ab0012a00f0a9041f52d04d86d8011080554c568ddf5226588844dd8a41c4074" }
+  ]
+}
