@@ -2,6 +2,8 @@
 comet_change: rs-clob-client-v2
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-25-rs-clob-client-v2
+status: final
 ---
 
 # rs-clob-client-v2 Technical Design

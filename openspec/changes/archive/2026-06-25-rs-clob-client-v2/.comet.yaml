@@ -1,18 +1,18 @@
 workflow: full
-phase: verify
+phase: archive
 build_mode: executing-plans
 build_pause: null
 isolation: branch
-verify_mode: null
+verify_mode: full
 base_ref: 27351ce7661f5513dab5b4bd045abf6ff49b313b
 design_doc: docs/superpowers/specs/2026-06-25-rs-clob-client-v2-design.md
 plan: docs/superpowers/plans/2026-06-25-rs-clob-client-v2.md
-verify_result: pending
-verification_report: null
-branch_status: pending
+verify_result: pass
+verification_report: docs/superpowers/reports/2026-06-25-rs-clob-client-v2-verify.md
+branch_status: handled
 created_at: 2026-06-25
-verified_at: null
-archived: false
+verified_at: 2026-06-25
+archived: true
 handoff_context: openspec/changes/rs-clob-client-v2/.comet/handoff/design-context.json
 handoff_hash: e51a157d350e521c2c7be8ec986144db0a2776c1a8f9bab2fb86a3b538f4ed31
 build_command: cargo check

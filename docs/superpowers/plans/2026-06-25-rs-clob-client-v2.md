@@ -2,6 +2,7 @@
 change: rs-clob-client-v2
 design-doc: docs/superpowers/specs/2026-06-25-rs-clob-client-v2-design.md
 base-ref: 27351ce7661f5513dab5b4bd045abf6ff49b313b
+archived-with: 2026-06-25-rs-clob-client-v2
 ---
 
 # rs-clob-client-v2 Implementation Plan
@@ -24,6 +25,7 @@ base-ref: 27351ce7661f5513dab5b4bd045abf6ff49b313b
 - The client remains read-only and unauthenticated.
 - Prices and sizes are logged as strings to avoid precision loss.
 
+archived-with: 2026-06-25-rs-clob-client-v2
 ---
 
 ## File Structure
