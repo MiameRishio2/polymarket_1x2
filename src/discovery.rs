@@ -109,11 +109,10 @@ mod tests {
 
     #[test]
     fn extracts_slug_from_localized_polymarket_url() {
-        let slug =
-            extract_slug("https://polymarket.com/ja/sports/world-cup/fifwc-ecu-ger-2026-06-25")
-                .unwrap();
+        let slug = extract_slug("https://polymarket.com/sports/world-cup/fifwc-nor-fra-2026-06-26")
+            .unwrap();
 
-        assert_eq!(slug, "fifwc-ecu-ger-2026-06-25");
+        assert_eq!(slug, "fifwc-nor-fra-2026-06-26");
     }
 
     #[test]

@@ -50,6 +50,21 @@ pub async fn run_market_stream(
 
     let mut logger = QuoteLogger::new(&config.log_path)?;
     let mut state = QuoteState::new(event.slug.clone(), event.tokens.clone());
+    let clob_client = crate::clob::create_client(&config)?;
+    for record in crate::clob::load_initial_orderbooks(&clob_client, &event, &mut state).await? {
+        println!(
+            "{} {} {} bid={:?}/{:?} ask={:?}/{:?}",
+            record.market_slug,
+            record.outcome,
+            record.asset_id,
+            record.bid_price,
+            record.bid_size,
+            record.ask_price,
+            record.ask_size
+        );
+        logger.append(&record)?;
+    }
+
     let payload = Message::Text(subscription_payload(&asset_ids).to_string().into());
 
     loop {
