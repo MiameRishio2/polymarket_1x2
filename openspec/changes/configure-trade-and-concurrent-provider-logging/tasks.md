@@ -26,5 +26,5 @@
 ## 5. Verification
 
 - [x] 5.1 Run formatting and the complete Rust test suite.
-- [ ] 5.2 Build the release binary and run a bounded, trading-disabled smoke test against the supplied Polymarket URL.
-- [ ] 5.3 Verify the captured process output contains both `[polymarket]` and `[oddsportal]` lines and verify Polymarket records reach its configured JSONL file.
+- [x] 5.2 Build the release binary and run a bounded, trading-disabled smoke test against the supplied Polymarket URL.
+- [x] 5.3 Verify the captured process output contains both `[polymarket]` and `[oddsportal]` lines and verify Polymarket records reach its configured JSONL file.

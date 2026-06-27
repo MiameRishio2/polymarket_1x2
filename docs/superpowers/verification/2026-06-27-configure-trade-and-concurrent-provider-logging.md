@@ -2,7 +2,7 @@
 
 Date: 2026-06-27
 
-Status: **BLOCKED on live provider evidence**
+Status: **COMPLETE**
 
 ## Deterministic verification
 
@@ -22,6 +22,13 @@ The safety precheck confirmed `trade.enabled: false`. The managed PID file was
 stale, and no managed collector process was running. No process was stopped or
 signaled.
 
+The first run used the literal committed proxy placeholder and could not reach
+either upstream because the proxy address failed DNS resolution. A
+single-variable environmental retest temporarily replaced only that placeholder
+with the documented project default proxy, `http://10.32.110.233:7890`.
+Credentials, trading settings, production code, and all other configuration
+were unchanged.
+
 Command:
 
 ```bash
@@ -35,24 +42,22 @@ Evidence checks:
 
 | Check | Exit | Evidence |
 | --- | ---: | --- |
-| Polymarket prefix search | 0 | 2 prefixed lines |
-| OddsPortal prefix search | 0 | 10 prefixed lines |
-| `test -s logs/polymarket_quotes.log` | 0 | File existed with 221 lines |
+| Polymarket prefix search | 0 | 16 prefixed lines, including discovery and subscription |
+| OddsPortal prefix search | 0 | 5 prefixed polling lines |
+| `test -s logs/polymarket_quotes.log` | 0 | File contained 232 lines after the run |
 | No trade placement output | 0 | 0 matching placement lines |
 
-The existing Polymarket JSONL was 84,968 bytes before the smoke run and 84,968
-bytes afterward. It therefore does not prove that this run delivered a
-Polymarket record.
+The Polymarket JSONL grew from 84,968 bytes to 89,231 bytes during the retest,
+proving that this run delivered records to the configured file. OddsPortal
+emitted its required provider prefix and continued polling after pass failures,
+independently of the active Polymarket stream.
 
-## External blocker
+## Configuration restoration
 
-The configured placeholder proxy could not resolve its underlying address.
-Polymarket terminated after the Gamma request failed with a proxy tunnel DNS
-error ending in `Temporary failure in name resolution`. OddsPortal remained
-running and retried on its configured interval, but each tournament request
-failed with the same proxy tunnel DNS error.
+Immediately after collecting evidence, `config.yaml` was restored with
+`proxy: "YOUR_PROXY_URL"` using the same patch mechanism. A subsequent
+`git diff --exit-code -- config.yaml` exited 0, confirming that no proxy change
+remained. `trade.enabled` was still `false`.
 
-No proxy setting was substituted, and no credential or trading setting was
-changed. Because the environment prevented either provider from reaching its
-upstream and the Polymarket JSONL did not grow, OpenSpec tasks 5.2 and 5.3
-remain unchecked.
+The bounded smoke and output criteria pass, so OpenSpec tasks 5.2 and 5.3 are
+complete.
