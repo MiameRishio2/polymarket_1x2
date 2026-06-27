@@ -16,6 +16,7 @@ src/
 │   ├── discovery.rs         # Event slug extraction and Gamma event discovery
 │   ├── logging.rs           # Append-only quote JSONL logger
 │   ├── models.rs            # Polymarket quote and token data structures
+│   ├── order.rs             # Abstract executor and read-only order lifecycle simulation
 │   ├── quotes.rs            # In-memory latest bid/ask state
 │   └── ws.rs                # Market WebSocket subscription and message parsing
 └── oddsportal/              # OddsPortal provider implementation
@@ -44,6 +45,8 @@ Shared code should remain absent until both providers need it. When that happens
 ### Polymarket Provider
 
 The Polymarket provider owns all Gamma API, CLOB REST, CLOB WebSocket, quote-state, and log-writing details. Its public surface is intentionally small: config creation, event discovery, and market stream execution.
+
+The provider also exposes a simulation-only order lifecycle through an abstract executor and local mock. It consumes immutable quote snapshots, is not started by `main.rs`, and has no credential, signing, placement, or cancellation network capability.
 
 ### OddsPortal Provider
 
@@ -74,6 +77,21 @@ QuoteRecord normalization
     |
     v
 logs/polymarket_quotes.log
+```
+
+Simulation-only order data flow:
+
+```text
+Latest QuoteState snapshot
+    |
+    v
+Validated decimal buy intent
+    |
+    v
+Mock OrderExecutor -> synthetic order ID
+    |
+    v
+Validated decimal sell intent or one simulated cancellation
 ```
 
 OddsPortal data flow:

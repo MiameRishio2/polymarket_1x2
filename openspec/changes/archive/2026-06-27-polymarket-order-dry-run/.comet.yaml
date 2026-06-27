@@ -1,0 +1,17 @@
+workflow: full
+phase: archive
+build_mode: executing-plans
+build_pause: null
+isolation: branch
+verify_mode: full
+base_ref: 678e33583a5d7bfb72be9e13b030b5df7308b231
+design_doc: docs/superpowers/specs/2026-06-27-polymarket-order-dry-run-design.md
+plan: docs/superpowers/plans/2026-06-27-polymarket-order-dry-run.md
+verify_result: pass
+verification_report: docs/superpowers/reports/2026-06-27-polymarket-order-dry-run-verify.md
+branch_status: handled
+created_at: 2026-06-27
+verified_at: 2026-06-27
+archived: true
+handoff_context: openspec/changes/polymarket-order-dry-run/.comet/handoff/design-context.json
+handoff_hash: 0aca54902b24c97e896199b53e76d0b0bb75702bab705d9a9a1e353e8dacb0e6

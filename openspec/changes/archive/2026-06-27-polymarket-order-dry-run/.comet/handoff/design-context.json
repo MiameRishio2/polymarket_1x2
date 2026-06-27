@@ -1,0 +1,15 @@
+{
+  "change": "polymarket-order-dry-run",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "0aca54902b24c97e896199b53e76d0b0bb75702bab705d9a9a1e353e8dacb0e6",
+  "files": [
+    { "path": "openspec/changes/polymarket-order-dry-run/proposal.md", "sha256": "84d95f26746fa844573761661e5c582c2127924e423de81b7035733b02b41acd" },
+    { "path": "openspec/changes/polymarket-order-dry-run/design.md", "sha256": "aad677a0edc4df86e6f0bcb9807ddd394c56379a2c27181485cfc3d6b0235953" },
+    { "path": "openspec/changes/polymarket-order-dry-run/tasks.md", "sha256": "1f7f6b12c15a8d7fc31f2eeddf19942bc475db7a94df4c4bad55dc1ad29f7795" },
+    { "path": "openspec/changes/polymarket-order-dry-run/specs/polymarket-order-dry-run/spec.md", "sha256": "89bde8a9ebfc4e7d4315960250bc3020a13663bb505feaa13f7a1dc86a882f4b" },
+    { "path": "openspec/changes/polymarket-order-dry-run/specs/polymarket-ws-quotes/spec.md", "sha256": "61be870138398f31b3e626f5346d350316d3818e1ae093756dac27708f61f711" }
+  ]
+}
