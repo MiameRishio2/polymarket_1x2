@@ -5,11 +5,48 @@ pub mod logging;
 pub mod models;
 pub mod odds;
 
+use std::future::Future;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Context, Result};
 use reqwest::header::{HeaderMap, HeaderValue};
 use tokio::time::{sleep, Duration};
+
+pub async fn run_poll_loop(config: config::Config, interval: Duration) -> Result<()> {
+    run_poll_loop_with(config, interval, None, collect_once).await
+}
+
+async fn run_poll_loop_with<F, Fut>(
+    config: config::Config,
+    interval: Duration,
+    max_iterations: Option<usize>,
+    mut collect: F,
+) -> Result<()>
+where
+    F: FnMut(config::Config) -> Fut,
+    Fut: Future<Output = Result<Vec<models::OddsPortalRecord>>>,
+{
+    let mut completed = 0;
+    loop {
+        if max_iterations == Some(completed) {
+            return Ok(());
+        }
+
+        match collect(config.clone()).await {
+            Ok(records) => println!(
+                "oddsportal collection pass succeeded with {} records",
+                records.len()
+            ),
+            Err(error) => eprintln!("oddsportal collection pass failed: {error:#}"),
+        }
+        completed += 1;
+
+        if max_iterations == Some(completed) {
+            return Ok(());
+        }
+        sleep(interval).await;
+    }
+}
 
 pub async fn collect_once(config: config::Config) -> Result<Vec<models::OddsPortalRecord>> {
     let mut headers = HeaderMap::new();
@@ -148,6 +185,27 @@ fn http_request_url(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn polling_continues_after_failed_pass() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let observed = Arc::clone(&attempts);
+        run_poll_loop_with(
+            config::Config::default(),
+            Duration::from_millis(1),
+            Some(2),
+            move |_| {
+                observed.fetch_add(1, Ordering::SeqCst);
+                async { Err(anyhow!("expected test failure")) }
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    }
 
     #[test]
     fn cache_busted_url_appends_timestamp_to_open_cache_param() {
