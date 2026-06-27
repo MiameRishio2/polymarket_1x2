@@ -1,11 +1,11 @@
-workflow: tweak
+workflow: full
 phase: build
 build_mode: direct
 build_pause: null
 isolation: branch
-verify_mode: light
+verify_mode: full
 base_ref: 2e31a093aa48995643e3e2f7e6156da8614598e9
-design_doc: null
+design_doc: docs/superpowers/specs/2026-06-27-live-trading-policy-design.md
 plan: null
 verify_result: pending
 verification_report: null
@@ -13,3 +13,5 @@ branch_status: pending
 created_at: 2026-06-27
 verified_at: null
 archived: false
+handoff_context: openspec/changes/remove-live-trading-prohibition/.comet/handoff/design-context.json
+handoff_hash: aeedb2f61807e3ba8fa8e5a34bbfedc34d44034de200b55a3be3282e881d2edd

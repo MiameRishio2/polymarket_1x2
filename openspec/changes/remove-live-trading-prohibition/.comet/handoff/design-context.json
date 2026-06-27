@@ -1,0 +1,13 @@
+{
+  "change": "remove-live-trading-prohibition",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "aeedb2f61807e3ba8fa8e5a34bbfedc34d44034de200b55a3be3282e881d2edd",
+  "files": [
+    { "path": "openspec/changes/remove-live-trading-prohibition/proposal.md", "sha256": "09fb53cd42b5c7ac06c0aeb64751737e3fb9ab0c31632e7ff51ebd203101c530" },
+    { "path": "openspec/changes/remove-live-trading-prohibition/design.md", "sha256": "dd147a5cb00de93f9b31cf539fe5cab0ffb0a9a477fe456ce2eb87c285103213" },
+    { "path": "openspec/changes/remove-live-trading-prohibition/tasks.md", "sha256": "2605bdaffbfe951681b04b718f71a7810d54620658f8730d12af3d9c92a868bd" }
+  ]
+}
