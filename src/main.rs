@@ -2,7 +2,10 @@ mod config;
 mod oddsportal;
 mod polymarket;
 
-use tokio::task::JoinSet;
+use std::collections::HashMap;
+use std::future::Future;
+
+use tokio::task::{Id, JoinSet};
 
 #[derive(Clone, Copy, Debug)]
 enum Provider {
@@ -19,22 +22,56 @@ impl Provider {
     }
 }
 
-async fn supervise(mut tasks: JoinSet<(Provider, anyhow::Result<()>)>) -> anyhow::Result<()> {
+#[cfg(test)]
+fn spawn_provider<F>(
+    tasks: &mut JoinSet<(Provider, anyhow::Result<()>)>,
+    providers: &mut HashMap<Id, Provider>,
+    provider: Provider,
+    future: F,
+) where
+    F: Future<Output = anyhow::Result<()>> + Send + 'static,
+{
+    let handle = tasks.spawn(async move { (provider, future.await) });
+    providers.insert(handle.id(), provider);
+}
+
+fn spawn_local_provider<F>(
+    tasks: &mut JoinSet<(Provider, anyhow::Result<()>)>,
+    providers: &mut HashMap<Id, Provider>,
+    provider: Provider,
+    future: F,
+) where
+    F: Future<Output = anyhow::Result<()>> + 'static,
+{
+    let handle = tasks.spawn_local(async move { (provider, future.await) });
+    providers.insert(handle.id(), provider);
+}
+
+async fn supervise(
+    mut tasks: JoinSet<(Provider, anyhow::Result<()>)>,
+    mut providers: HashMap<Id, Provider>,
+) -> anyhow::Result<()> {
     let mut terminal_errors = Vec::new();
-    while let Some(joined) = tasks.join_next().await {
+    while let Some(joined) = tasks.join_next_with_id().await {
         match joined {
-            Ok((provider, Ok(()))) => {
+            Ok((task_id, (provider, Ok(())))) => {
+                providers.remove(&task_id);
                 let error = format!("{} provider stopped unexpectedly", provider.prefix());
                 eprintln!("{error}");
                 terminal_errors.push(error);
             }
-            Ok((provider, Err(error))) => {
+            Ok((task_id, (provider, Err(error)))) => {
+                providers.remove(&task_id);
                 let error = format!("{} provider failed: {error:#}", provider.prefix());
                 eprintln!("{error}");
                 terminal_errors.push(error);
             }
             Err(error) => {
-                let error = format!("provider task failed: {error}");
+                let prefix = providers
+                    .remove(&error.id())
+                    .map(Provider::prefix)
+                    .unwrap_or("[runtime]");
+                let error = format!("{prefix} provider task failed: {error}");
                 eprintln!("{error}");
                 terminal_errors.push(error);
             }
@@ -53,20 +90,22 @@ async fn main() -> anyhow::Result<()> {
     tokio::task::LocalSet::new()
         .run_until(async move {
             let mut tasks = JoinSet::new();
+            let mut providers = HashMap::new();
 
             if let Some(runtime) = runtime.polymarket {
                 println!(
                     "[polymarket] starting collector for {}",
                     runtime.config.polymarket_url
                 );
-                tasks.spawn_local(async move {
-                    let result = async {
+                spawn_local_provider(
+                    &mut tasks,
+                    &mut providers,
+                    Provider::Polymarket,
+                    async move {
                         let event = polymarket::discovery::discover_event(&runtime.config).await?;
                         polymarket::ws::run_market_stream(runtime.config, runtime.live, event).await
-                    }
-                    .await;
-                    (Provider::Polymarket, result)
-                });
+                    },
+                );
             }
 
             if let Some(runtime) = runtime.oddsportal {
@@ -74,14 +113,15 @@ async fn main() -> anyhow::Result<()> {
                     "[oddsportal] starting collector for {} vs {}",
                     runtime.config.home_team, runtime.config.away_team
                 );
-                tasks.spawn_local(async move {
-                    let result =
-                        oddsportal::run_poll_loop(runtime.config, runtime.poll_interval).await;
-                    (Provider::OddsPortal, result)
-                });
+                spawn_local_provider(
+                    &mut tasks,
+                    &mut providers,
+                    Provider::OddsPortal,
+                    oddsportal::run_poll_loop(runtime.config, runtime.poll_interval),
+                );
             }
 
-            supervise(tasks).await
+            supervise(tasks, providers).await
         })
         .await
 }
@@ -114,14 +154,35 @@ mod tests {
         let completed = Arc::new(AtomicBool::new(false));
         let observed = Arc::clone(&completed);
         let mut tasks = JoinSet::new();
-        tasks.spawn(async { (Provider::Polymarket, Err(anyhow!("expected failure"))) });
-        tasks.spawn(async move {
-            tokio::time::sleep(Duration::from_millis(1)).await;
-            observed.store(true, Ordering::SeqCst);
-            (Provider::OddsPortal, Ok(()))
+        let mut providers = HashMap::new();
+        spawn_provider(&mut tasks, &mut providers, Provider::Polymarket, async {
+            Err(anyhow!("expected failure"))
+        });
+        spawn_provider(
+            &mut tasks,
+            &mut providers,
+            Provider::OddsPortal,
+            async move {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+                observed.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+        );
+
+        assert!(supervise(tasks, providers).await.is_err());
+        assert!(completed.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn supervisor_attributes_panics_to_the_provider() {
+        let mut tasks = JoinSet::new();
+        let mut providers = HashMap::new();
+        spawn_provider(&mut tasks, &mut providers, Provider::OddsPortal, async {
+            panic!("expected provider panic")
         });
 
-        assert!(supervise(tasks).await.is_err());
-        assert!(completed.load(Ordering::SeqCst));
+        let error = supervise(tasks, providers).await.unwrap_err().to_string();
+
+        assert!(error.contains("[oddsportal]"), "{error}");
     }
 }
