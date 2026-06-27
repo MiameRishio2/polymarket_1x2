@@ -23,7 +23,15 @@ Before changing deployment documentation, build/start/stop scripts, runtime path
 
 - Run `cargo test` after Rust code changes.
 - Prefer focused tests near the code being changed.
-- Do not commit changes unless the user explicitly asks.
+
+## Completion Workflow
+
+- Before marking a task complete, run all validation appropriate to the files changed and require it to pass.
+- Stage and commit only changes that belong to the current task; preserve unrelated and pre-existing user changes.
+- If already on `main`, commit there. If working on another branch, integrate it into `main` with a normal, non-destructive merge.
+- Push the resulting `main` branch to `origin/main` without requiring another confirmation.
+- If validation, commit, merge, or push fails, stop and report the failure instead of claiming completion.
+- Never force-push, discard changes, rewrite shared history, or include secrets and runtime files to complete this workflow.
 
 ## Change Discipline
 
