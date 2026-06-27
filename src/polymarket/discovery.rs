@@ -2,8 +2,8 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde::Deserialize;
 use url::Url;
 
-use crate::config::Config;
-use crate::models::{DiscoveredEvent, TokenMeta};
+use crate::polymarket::config::Config;
+use crate::polymarket::models::{DiscoveredEvent, TokenMeta};
 
 pub fn extract_slug(input: &str) -> Result<String> {
     let url = Url::parse(input).context("invalid Polymarket URL")?;
@@ -105,7 +105,7 @@ struct GammaMarket {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::TokenMeta;
+    use crate::polymarket::models::TokenMeta;
 
     #[test]
     fn extracts_slug_from_localized_polymarket_url() {

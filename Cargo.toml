@@ -5,15 +5,24 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
+aes = "0.8"
+base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 async-http-proxy = { version = "1.2", features = ["runtime-tokio", "basic-auth"] }
+cbc = { version = "0.1", features = ["alloc"] }
+flate2 = "1"
 futures-util = "0.3"
+html-escape = "0.2"
+percent-encoding = "2"
+pbkdf2 = "0.12"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 rs-clob-client-v2 = "0.2.2"
 rustls = { version = "0.23", features = ["ring"] }
 rust_decimal = "1"
+scraper = "0.20"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "time"] }
 tokio-rustls = "0.26"
 tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }

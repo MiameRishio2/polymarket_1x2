@@ -1,0 +1,15 @@
+{
+  "change": "oddsportal-js-odds-logging",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "4a4e122629e391efb0156f30d20cbbc1548bb8981b1291b941d8038651584b65",
+  "files": [
+    { "path": "openspec/changes/oddsportal-js-odds-logging/proposal.md", "sha256": "2db3a0b60f1f89191ce37241bc2fcb04812a242122f78c905e4b88b16abed16e" },
+    { "path": "openspec/changes/oddsportal-js-odds-logging/design.md", "sha256": "889a99185baddb50dfe04627334217a7e8e0767352c2eb34ca3a274c6d42e8b6" },
+    { "path": "openspec/changes/oddsportal-js-odds-logging/tasks.md", "sha256": "12193809f95cf110e79679e27b545bb44b3a98d799586c376755b39a29abb2e0" },
+    { "path": "openspec/changes/oddsportal-js-odds-logging/specs/oddsportal-js-odds/spec.md", "sha256": "f9fcc048631c30a646a468a890652c8d42966b4bbb67667b4522a6567282c529" },
+    { "path": "openspec/changes/oddsportal-js-odds-logging/specs/polymarket-ws-quotes/spec.md", "sha256": "c1f94d0b9b9ee36adefcab2b61ffdae2d241ef047077cc273065c2d9cdef34e3" }
+  ]
+}

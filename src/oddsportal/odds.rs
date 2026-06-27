@@ -1,0 +1,149 @@
+use anyhow::{anyhow, Result};
+use chrono::Utc;
+use serde_json::Value;
+
+use crate::oddsportal::models::OddsPortalRecord;
+
+const OUTCOMES: [(&str, &str); 3] = [("0", "1"), ("1", "X"), ("2", "2")];
+
+pub fn normalize_1x2_odds(
+    decoded: &Value,
+    event_name: &str,
+    source_url: &str,
+) -> Result<Vec<OddsPortalRecord>> {
+    let data = decoded
+        .get("d")
+        .ok_or_else(|| anyhow!("decoded OddsPortal response missing d object"))?;
+    let event_id = string_field(data, "encodeventId")
+        .or_else(|| string_field(data, "eventId"))
+        .unwrap_or_default();
+    let provider_names = data.get("providersNames").and_then(Value::as_object);
+    let back = data
+        .get("oddsdata")
+        .and_then(|oddsdata| oddsdata.get("back"))
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            let keys = data
+                .as_object()
+                .map(|object| object.keys().cloned().collect::<Vec<_>>().join(", "))
+                .unwrap_or_default();
+            anyhow!("decoded OddsPortal response missing oddsdata.back; keys: {keys}")
+        })?;
+
+    let mut records = Vec::new();
+    for market in back.values() {
+        let Some(odds_by_bookmaker) = market.get("odds").and_then(Value::as_object) else {
+            continue;
+        };
+        let active = market.get("act").and_then(Value::as_object);
+
+        for (bookmaker_id, prices) in odds_by_bookmaker {
+            if matches!(
+                active.and_then(|act| act.get(bookmaker_id)),
+                Some(Value::Bool(false))
+            ) {
+                continue;
+            }
+            let Some(prices) = prices.as_object() else {
+                continue;
+            };
+            for (column, outcome) in OUTCOMES {
+                let Some(decimal_odds) = prices.get(column).and_then(value_to_string) else {
+                    continue;
+                };
+                records.push(OddsPortalRecord {
+                    ts: Utc::now().to_rfc3339(),
+                    provider: "oddsportal".to_string(),
+                    event_id: event_id.clone(),
+                    event_name: event_name.to_string(),
+                    bookmaker_id: bookmaker_id.clone(),
+                    bookmaker_name: provider_names
+                        .and_then(|names| names.get(bookmaker_id))
+                        .and_then(value_to_string)
+                        .unwrap_or_else(|| bookmaker_id.clone()),
+                    outcome: outcome.to_string(),
+                    decimal_odds,
+                    source_url: source_url.to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(records)
+}
+
+fn string_field(value: &Value, field: &str) -> Option<String> {
+    value.get(field).and_then(value_to_string)
+}
+
+fn value_to_string(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => Some(text.clone()),
+        Value::Number(number) => Some(number.to_string()),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_one_x_two_bookmaker_odds() {
+        let decoded = serde_json::json!({
+            "d": {
+                "encodeventId": "bsJSJ30L",
+                "oddsdata": {
+                    "back": {
+                        "0": {
+                            "odds": {
+                                "16": {"0": "4.20", "1": "3.70", "2": "1.85"}
+                            },
+                            "act": {"16": true}
+                        }
+                    }
+                },
+                "providersNames": {"16": "bet365"}
+            }
+        });
+
+        let records = normalize_1x2_odds(
+            &decoded,
+            "Norway - France",
+            "https://www.oddsportal.com/match-event/test.dat",
+        )
+        .unwrap();
+
+        assert_eq!(records.len(), 3);
+        assert!(records.iter().any(|record| {
+            record.bookmaker_name == "bet365"
+                && record.outcome == "X"
+                && record.decimal_odds == "3.70"
+        }));
+    }
+
+    #[test]
+    fn skips_inactive_bookmaker_odds() {
+        let decoded = serde_json::json!({
+            "d": {
+                "encodeventId": "bsJSJ30L",
+                "oddsdata": {
+                    "back": {
+                        "0": {
+                            "odds": {
+                                "16": {"0": "4.20", "1": "3.70", "2": "1.85"}
+                            },
+                            "act": {"16": false}
+                        }
+                    }
+                },
+                "providersNames": {"16": "bet365"}
+            }
+        });
+
+        let records =
+            normalize_1x2_odds(&decoded, "Norway - France", "https://example.test").unwrap();
+
+        assert!(records.is_empty());
+    }
+}

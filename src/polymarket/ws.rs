@@ -7,9 +7,9 @@ use tokio_tungstenite::client_async_tls_with_config;
 use tokio_tungstenite::tungstenite::Message;
 use url::Url;
 
-use crate::logging::QuoteLogger;
-use crate::models::{DiscoveredEvent, PriceLevel, QuoteRecord};
-use crate::quotes::QuoteState;
+use crate::polymarket::logging::QuoteLogger;
+use crate::polymarket::models::{DiscoveredEvent, PriceLevel, QuoteRecord};
+use crate::polymarket::quotes::QuoteState;
 
 pub fn subscription_payload(asset_ids: &[String]) -> Value {
     serde_json::json!({
@@ -36,7 +36,7 @@ pub fn parse_market_message(value: &Value, state: &mut QuoteState) -> Vec<QuoteR
 }
 
 pub async fn run_market_stream(
-    config: crate::config::Config,
+    config: crate::polymarket::config::Config,
     event: DiscoveredEvent,
 ) -> Result<()> {
     let asset_ids: Vec<String> = event
@@ -50,8 +50,10 @@ pub async fn run_market_stream(
 
     let mut logger = QuoteLogger::new(&config.log_path)?;
     let mut state = QuoteState::new(event.slug.clone(), event.tokens.clone());
-    let clob_client = crate::clob::create_client(&config)?;
-    for record in crate::clob::load_initial_orderbooks(&clob_client, &event, &mut state).await? {
+    let clob_client = crate::polymarket::clob::create_client(&config)?;
+    for record in
+        crate::polymarket::clob::load_initial_orderbooks(&clob_client, &event, &mut state).await?
+    {
         println!(
             "{} {} {} bid={:?}/{:?} ask={:?}/{:?}",
             record.market_slug,
@@ -206,7 +208,7 @@ async fn connect_ws_via_proxy(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::TokenMeta;
+    use crate::polymarket::models::TokenMeta;
 
     #[test]
     fn subscription_payload_uses_assets_ids_and_market_type() {

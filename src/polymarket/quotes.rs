@@ -4,7 +4,7 @@ use std::str::FromStr;
 use chrono::Utc;
 use rust_decimal::Decimal;
 
-use crate::models::{PriceLevel, QuoteRecord, TokenMeta};
+use crate::polymarket::models::{PriceLevel, QuoteRecord, TokenMeta};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct CurrentQuote {

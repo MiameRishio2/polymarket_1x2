@@ -1,0 +1,15 @@
+{
+  "change": "reorganize-polymarket-layout",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "8951ff54555c3c06d32018cc3be49184102e1da7629f24b2f7f7626a0590465c",
+  "files": [
+    { "path": "openspec/changes/reorganize-polymarket-layout/proposal.md", "sha256": "016605c34795620c08139c4e5eb23bdf5e9703fcd857e575ec7c9b8c201c7967" },
+    { "path": "openspec/changes/reorganize-polymarket-layout/design.md", "sha256": "974780bbab69127e90651035d15c0ebb355928085d3beacf7dd5518228fa6273" },
+    { "path": "openspec/changes/reorganize-polymarket-layout/tasks.md", "sha256": "7b5a6bcfdde00a310f339d8429eeaece658255826c66b1ef86abb9542aeae885" },
+    { "path": "openspec/changes/reorganize-polymarket-layout/specs/polymarket-ws-quotes/spec.md", "sha256": "3281b3dd0ed83677e0dd55972d9b0457d8600da24ad90aab244d61067c6c437e" },
+    { "path": "openspec/changes/reorganize-polymarket-layout/specs/provider-source-layout/spec.md", "sha256": "fb512ee2206cbf99661762e2f89db79ffa3529686283b10b2286102b5106fbd9" }
+  ]
+}

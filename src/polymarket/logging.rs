@@ -4,7 +4,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
-use crate::models::QuoteRecord;
+use crate::polymarket::models::QuoteRecord;
 
 pub struct QuoteLogger {
     file: File,

@@ -2,9 +2,9 @@ use anyhow::Result;
 use rs_clob_client_v2::types::{Chain, OrderBookParams, OrderBookSummary};
 use rs_clob_client_v2::ClobClient;
 
-use crate::config::Config;
-use crate::models::{DiscoveredEvent, PriceLevel, QuoteRecord};
-use crate::quotes::QuoteState;
+use crate::polymarket::config::Config;
+use crate::polymarket::models::{DiscoveredEvent, PriceLevel, QuoteRecord};
+use crate::polymarket::quotes::QuoteState;
 
 pub fn create_client(config: &Config) -> Result<ClobClient> {
     Ok(ClobClient::new(
@@ -86,7 +86,7 @@ pub fn apply_orderbook_summary(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::TokenMeta;
+    use crate::polymarket::models::TokenMeta;
     use rs_clob_client_v2::types::{OrderBookSummary, OrderSummary};
 
     fn event() -> DiscoveredEvent {
