@@ -2,6 +2,8 @@
 comet_change: oddsportal-js-odds-logging
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-27-oddsportal-js-odds-logging
+status: final
 ---
 
 # OddsPortal JS Odds Logging Technical Design

@@ -2,6 +2,7 @@
 change: oddsportal-js-odds-logging
 design-doc: docs/superpowers/specs/2026-06-26-oddsportal-js-odds-logging-design.md
 base-ref: 1e4f7c7fd0720d6aa7af9b4a09dd504f6926e20d
+archived-with: 2026-06-27-oddsportal-js-odds-logging
 ---
 
 # OddsPortal JS Odds Logging Implementation Plan
@@ -14,6 +15,7 @@ base-ref: 1e4f7c7fd0720d6aa7af9b4a09dd504f6926e20d
 
 **Tech Stack:** Rust 2021, `reqwest`, `serde_json`, `scraper`, `html-escape`, `base64`, `flate2`, `percent-encoding`, existing `tokio` runtime.
 
+archived-with: 2026-06-27-oddsportal-js-odds-logging
 ---
 
 ## File Structure
