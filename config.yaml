@@ -1,0 +1,59 @@
+# This committed configuration contains invalid credential placeholders only.
+proxy: "YOUR_PROXY_URL"
+private_key: "YOUR_PRIVATE_KEY"
+gamma_host: https://gamma-api.polymarket.com
+host: https://clob.polymarket.com
+chain_id: 137
+markets:
+  period: 5m
+  items:
+  - prefix: btc-updown
+  - prefix: eth-updown
+  price_interval: 100
+accounts:
+- name: "long-test-account"
+  type: long
+  signature_type: null
+  private_key: "YOUR_PRIVATE_KEY"
+  host: https://clob.polymarket.com
+  chain_id: 137
+  funder: "YOUR_FUNDER_ADDRESS"
+- name: "short-test-account"
+  type: short
+  signature_type: null
+  private_key: "YOUR_PRIVATE_KEY"
+  host: https://clob.polymarket.com
+  chain_id: 137
+  funder: "YOUR_FUNDER_ADDRESS"
+strategy:
+  name: correlation_hedge
+  correlation_hedge:
+    enter_diff: 0.05
+    exit_diff: 0.02
+    order_size: 5
+    max_spread: 0.05
+    force_close_minutes: 1
+    no_trade_seconds: 80
+    min_deviation: 0.0
+    trade_amount: 5.0
+    max_trades_per_market: 5
+    entry_timeout_seconds: 3
+    exit_timeout_seconds: 3
+    min_entry_hold_seconds: 0
+    max_hold_seconds: 90
+    min_profit: 0.0
+    slippage: 0.02
+    entry_cooldown_seconds: 0
+    directional_loss_lock_threshold: 0.0
+    high_risk_entry_diff: 0.15
+    high_risk_size_multiplier: 0.5
+trade:
+  trader_mode: real
+  account_mode: real
+  order_mode: real
+  market_mode: real
+  mock_order_fill_delay_ms: 0
+  mock_order_fill_probability: 1.0
+web:
+  enabled: true
+  addr: 0.0.0.0:28001
