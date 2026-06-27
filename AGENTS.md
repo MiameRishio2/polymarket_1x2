@@ -8,6 +8,10 @@ This repository is a Rust binary for collecting Polymarket 1X2 market quotes. Ke
 
 `AGENTS.md` depends on `ARCHITECTURE.md` for the canonical project structure and module ownership rules. Before changing source layout, provider boundaries, or agent guidance, read `ARCHITECTURE.md` first and keep this file consistent with it.
 
+## Deployment Dependency
+
+Before changing deployment documentation, build/start/stop scripts, runtime paths, or process-management behavior, read `DEPLOYMENT.md` and keep it synchronized with those changes.
+
 ## Source Layout
 
 - Polymarket-specific code belongs under `src/polymarket/`.
