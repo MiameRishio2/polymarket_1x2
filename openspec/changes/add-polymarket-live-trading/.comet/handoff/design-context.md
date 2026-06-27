@@ -3,7 +3,7 @@
 - Change: add-polymarket-live-trading
 - Phase: design
 - Mode: compact
-- Context hash: e4bbe82da9994eb6d313edaac08e58fc5f43ed6d467144c66e94ddc74366b7d9
+- Context hash: 08370e41eda2941d64643d922dc186a234d712da0902aa84c2d91b506029935d
 
 Generated-by: comet-handoff.sh
 
@@ -141,7 +141,7 @@ None. The test-only first-token selection and immediate-sell semantics were expl
 
 - Source: openspec/changes/add-polymarket-live-trading/tasks.md
 - Lines: 1-22
-- SHA256: 6f7ab8f3d78b453f93d5e7c04bd430d1ec540dedb3a5c1baa6cfe7bddbfef62a
+- SHA256: d7a0ada898cf92c41009b91d8bd1525a2ce410604dc3ee45961baa4104c40625
 
 ```md
 ## 1. Configuration and gating
@@ -154,7 +154,7 @@ None. The test-only first-token selection and immediate-sell semantics were expl
 
 - [ ] 2.1 Add direct YAML and signer dependencies while retaining the existing proxied `rs-clob-client-v2` public order-book adapter.
 - [ ] 2.2 Implement client initialization from configured private key and L2 API credentials, signature type, funder, chain, host, and proxy without calling credential create/derive or logging secrets.
-- [ ] 2.3 Implement `LiveOrderExecutor` exact fixed-decimal boundary mapping, GTC signing/posting, strict success/order-ID validation, and confirmed single-order cancellation behind a mockable adapter.
+- [ ] 2.3 Implement `LiveOrderExecutor` checked fixed-decimal boundary mapping, GTC signing/posting, strict success/order-ID validation, and confirmed single-order cancellation behind a mockable adapter.
 - [ ] 2.4 Add focused tests for side/decimal mapping, failed or malformed placement responses, buy failure, sell failure, confirmed cancellation, and rejected cancellation without live network writes.
 
 ## 3. One-shot runtime integration
@@ -172,7 +172,7 @@ None. The test-only first-token selection and immediate-sell semantics were expl
 
 - Source: openspec/changes/add-polymarket-live-trading/specs/polymarket-live-trading/spec.md
 - Lines: 1-109
-- SHA256: 6cbbb3d11d54dbb843b7c004eb0bd19206f63db74c8f090bb284f88ec22c2126
+- SHA256: 2ad6610aaec87afa8c104318b2b299fb4ab495dd4934081e73d3b50c2a42f025
 
 [TRUNCATED]
 
@@ -240,7 +240,7 @@ The system SHALL use the first token returned by event discovery and the initial
 - **THEN** the lifecycle fails before any order placement
 
 ### Requirement: Live limit-order mapping
-The live executor SHALL map each validated `LimitOrderIntent` to an `rs-clob-client-v2` signed GTC limit order with the same asset ID and side and an exact boundary conversion of the validated fixed decimal price and size. Placement SHALL succeed only when the response reports success and includes a non-empty order ID.
+The live executor SHALL map each validated `LimitOrderIntent` to an `rs-clob-client-v2` signed GTC limit order with the same asset ID and side and a checked, deterministic conversion of the validated fixed decimal price and size at the SDK's `f64` boundary. Placement SHALL succeed only when the response reports success and includes a non-empty order ID.
 
 #### Scenario: Buy intent is posted as GTC
 - **WHEN** the lifecycle submits the fixed buy intent

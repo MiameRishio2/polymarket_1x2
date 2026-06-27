@@ -61,7 +61,7 @@ The system SHALL use the first token returned by event discovery and the initial
 - **THEN** the lifecycle fails before any order placement
 
 ### Requirement: Live limit-order mapping
-The live executor SHALL map each validated `LimitOrderIntent` to an `rs-clob-client-v2` signed GTC limit order with the same asset ID and side and an exact boundary conversion of the validated fixed decimal price and size. Placement SHALL succeed only when the response reports success and includes a non-empty order ID.
+The live executor SHALL map each validated `LimitOrderIntent` to an `rs-clob-client-v2` signed GTC limit order with the same asset ID and side and a checked, deterministic conversion of the validated fixed decimal price and size at the SDK's `f64` boundary. Placement SHALL succeed only when the response reports success and includes a non-empty order ID.
 
 #### Scenario: Buy intent is posted as GTC
 - **WHEN** the lifecycle submits the fixed buy intent

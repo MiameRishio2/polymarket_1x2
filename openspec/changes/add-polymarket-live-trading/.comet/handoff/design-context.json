@@ -4,11 +4,11 @@
   "mode": "compact",
   "canonical_spec": "openspec",
   "generated_by": "comet-handoff.sh",
-  "context_hash": "e4bbe82da9994eb6d313edaac08e58fc5f43ed6d467144c66e94ddc74366b7d9",
+  "context_hash": "08370e41eda2941d64643d922dc186a234d712da0902aa84c2d91b506029935d",
   "files": [
     { "path": "openspec/changes/add-polymarket-live-trading/proposal.md", "sha256": "199e476b925071e8801dbe47f39ef755cba775e86ad1bca647ee05c17f99667a" },
     { "path": "openspec/changes/add-polymarket-live-trading/design.md", "sha256": "5b00105b01ee83553a977c3a53e5f4fde182bbfb767dedfff6b0bc3110a28622" },
-    { "path": "openspec/changes/add-polymarket-live-trading/tasks.md", "sha256": "6f7ab8f3d78b453f93d5e7c04bd430d1ec540dedb3a5c1baa6cfe7bddbfef62a" },
-    { "path": "openspec/changes/add-polymarket-live-trading/specs/polymarket-live-trading/spec.md", "sha256": "6cbbb3d11d54dbb843b7c004eb0bd19206f63db74c8f090bb284f88ec22c2126" }
+    { "path": "openspec/changes/add-polymarket-live-trading/tasks.md", "sha256": "d7a0ada898cf92c41009b91d8bd1525a2ce410604dc3ee45961baa4104c40625" },
+    { "path": "openspec/changes/add-polymarket-live-trading/specs/polymarket-live-trading/spec.md", "sha256": "2ad6610aaec87afa8c104318b2b299fb4ab495dd4934081e73d3b50c2a42f025" }
   ]
 }
