@@ -6,7 +6,7 @@ isolation: branch
 verify_mode: full
 base_ref: 2e31a093aa48995643e3e2f7e6156da8614598e9
 design_doc: docs/superpowers/specs/2026-06-27-live-trading-policy-design.md
-plan: null
+plan: docs/superpowers/plans/2026-06-27-live-trading-policy.md
 verify_result: pending
 verification_report: null
 branch_status: pending
