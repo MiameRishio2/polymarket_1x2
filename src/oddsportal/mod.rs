@@ -12,6 +12,8 @@ use anyhow::{anyhow, Context, Result};
 use reqwest::header::{HeaderMap, HeaderValue};
 use tokio::time::{sleep, Duration};
 
+const LOG_PREFIX: &str = "[oddsportal]";
+
 pub async fn run_poll_loop(config: config::Config, interval: Duration) -> Result<()> {
     run_poll_loop_with(config, interval, None, collect_once).await
 }
@@ -34,10 +36,10 @@ where
 
         match collect(config.clone()).await {
             Ok(records) => println!(
-                "oddsportal collection pass succeeded with {} records",
+                "{LOG_PREFIX} collection pass succeeded with {} records",
                 records.len()
             ),
-            Err(error) => eprintln!("oddsportal collection pass failed: {error:#}"),
+            Err(error) => eprintln!("{LOG_PREFIX} collection pass failed: {error:#}"),
         }
         completed += 1;
 
@@ -187,6 +189,11 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+
+    #[test]
+    fn polling_status_uses_stable_provider_prefix() {
+        assert_eq!(LOG_PREFIX, "[oddsportal]");
+    }
 
     #[tokio::test]
     async fn polling_continues_after_failed_pass() {

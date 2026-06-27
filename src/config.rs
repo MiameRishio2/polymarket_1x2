@@ -39,7 +39,7 @@ pub struct FileConfig {
     #[serde(default)]
     polymarket: PolymarketSection,
     #[serde(default)]
-    oddsportal: OddsPortalSection,
+    oddsportal: crate::oddsportal::config::FileConfig,
 }
 
 #[derive(Deserialize)]
@@ -60,30 +60,6 @@ impl Default for PolymarketSection {
     }
 }
 
-#[derive(Deserialize)]
-struct OddsPortalSection {
-    #[serde(default = "default_true")]
-    enabled: bool,
-    tournament_url: Option<String>,
-    home_team: Option<String>,
-    away_team: Option<String>,
-    log_path: Option<PathBuf>,
-    poll_interval_seconds: Option<u64>,
-}
-
-impl Default for OddsPortalSection {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            tournament_url: None,
-            home_team: None,
-            away_team: None,
-            log_path: None,
-            poll_interval_seconds: None,
-        }
-    }
-}
-
 impl FileConfig {
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
@@ -97,7 +73,10 @@ impl FileConfig {
     }
 
     pub fn into_runtime(self) -> Result<RuntimeConfig> {
-        if !self.polymarket.enabled && !self.oddsportal.enabled {
+        let (oddsportal_enabled, oddsportal_config, oddsportal_interval) =
+            self.oddsportal.into_runtime(Some(self.proxy.clone()))?;
+
+        if !self.polymarket.enabled && !oddsportal_enabled {
             bail!("at least one provider collector must be enabled");
         }
 
@@ -118,25 +97,10 @@ impl FileConfig {
             None
         };
 
-        let oddsportal = if self.oddsportal.enabled {
-            let defaults = crate::oddsportal::config::Config::default();
-            let poll_interval_seconds = self.oddsportal.poll_interval_seconds.unwrap_or(30);
-            if poll_interval_seconds == 0 {
-                bail!("oddsportal.poll_interval_seconds must be greater than zero");
-            }
+        let oddsportal = if oddsportal_enabled {
             Some(OddsPortalRuntime {
-                config: crate::oddsportal::config::Config {
-                    tournament_url: self
-                        .oddsportal
-                        .tournament_url
-                        .unwrap_or(defaults.tournament_url),
-                    home_team: self.oddsportal.home_team.unwrap_or(defaults.home_team),
-                    away_team: self.oddsportal.away_team.unwrap_or(defaults.away_team),
-                    log_path: self.oddsportal.log_path.unwrap_or(defaults.log_path),
-                    proxy_url: Some(self.proxy),
-                    ..defaults
-                },
-                poll_interval: Duration::from_secs(poll_interval_seconds),
+                config: oddsportal_config,
+                poll_interval: oddsportal_interval,
             })
         } else {
             None
