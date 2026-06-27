@@ -1,8 +1,8 @@
 workflow: full
 phase: build
-build_mode: null
+build_mode: executing-plans
 build_pause: null
-isolation: null
+isolation: branch
 verify_mode: null
 base_ref: 5219e6918d07be7d219b55ca4eb9c4d9a53debc8
 design_doc: docs/superpowers/specs/2026-06-27-polymarket-live-trading-design.md

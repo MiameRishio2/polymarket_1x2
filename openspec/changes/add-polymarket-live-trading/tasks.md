@@ -1,8 +1,8 @@
 ## 1. Configuration and gating
 
-- [ ] 1.1 Add typed `config.yaml` models for root transport settings, accounts, and the three retained trade modes, with focused deserialization tests.
-- [ ] 1.2 Remove `trade.order_mode` from `config.yaml` and implement the all-three-`real` gate so disabled modes do not parse credentials or create write-side clients.
-- [ ] 1.3 Implement exact `type: long` account selection, signature-type validation/defaulting, and sanitized configuration errors with missing/duplicate account tests.
+- [x] 1.1 Add typed `config.yaml` models for root transport settings, accounts, and the three retained trade modes, with focused deserialization tests.
+- [x] 1.2 Remove `trade.order_mode` from `config.yaml` and implement the all-three-`real` gate so disabled modes do not parse credentials or create write-side clients.
+- [x] 1.3 Implement exact `type: long` account selection, signature-type validation/defaulting, and sanitized configuration errors with missing/duplicate account tests.
 
 ## 2. Proxied authenticated CLOB execution
 

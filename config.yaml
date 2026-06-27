@@ -1,6 +1,6 @@
 # This committed configuration contains invalid credential placeholders only.
 proxy: "YOUR_PROXY_URL"
-private_key: "YOUR_PRIVATE_KEY"
+private_key: "0xc1dead79f64ca6f3387d02d6363062f93c061ab880f4235ebb327a19c7a7654f"
 gamma_host: https://gamma-api.polymarket.com
 host: https://clob.polymarket.com
 chain_id: 137
@@ -14,17 +14,20 @@ accounts:
 - name: "long-test-account"
   type: long
   signature_type: null
-  private_key: "YOUR_PRIVATE_KEY"
+  api_key: "YOUR_API_KEY"
+  api_secret: "YOUR_API_SECRET"
+  api_passphrase: "YOUR_API_PASSPHRASE"
+  private_key: "0xc1dead79f64ca6f3387d02d6363062f93c061ab880f4235ebb327a19c7a7654f"
   host: https://clob.polymarket.com
   chain_id: 137
-  funder: "YOUR_FUNDER_ADDRESS"
+  funder: "0x46a98092a677f0Aa331BE5E346c5Bc56e80D841A"
 - name: "short-test-account"
   type: short
   signature_type: null
-  private_key: "YOUR_PRIVATE_KEY"
+  private_key: "0x2a1603349795c338171956ed24d4b1bf824b65168268fec483d636d56c8ff341"
   host: https://clob.polymarket.com
   chain_id: 137
-  funder: "YOUR_FUNDER_ADDRESS"
+  funder: "0x714819Ec63f1e24cF5ad88c086BE02Fd807Bf0Ae"
 strategy:
   name: correlation_hedge
   correlation_hedge:
@@ -50,7 +53,6 @@ strategy:
 trade:
   trader_mode: real
   account_mode: real
-  order_mode: real
   market_mode: real
   mock_order_fill_delay_ms: 0
   mock_order_fill_probability: 1.0

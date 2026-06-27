@@ -1,4 +1,10 @@
+use std::fmt;
+use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
+
+use anyhow::{bail, Context, Result};
+use serde::Deserialize;
 
 pub const DEFAULT_POLYMARKET_URL: &str =
     "https://polymarket.com/sports/world-cup/fifwc-nor-fra-2026-06-26";
@@ -34,9 +40,180 @@ impl Default for Config {
     }
 }
 
+#[derive(Clone, Deserialize, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct SecretString(String);
+
+impl SecretString {
+    pub(crate) fn expose(&self) -> &str {
+        &self.0
+    }
+
+    fn require_non_empty(&self, field: &str) -> Result<()> {
+        if self.0.trim().is_empty() {
+            bail!("{field} must not be empty");
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Debug for SecretString {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("<redacted>")
+    }
+}
+
+#[derive(Deserialize)]
+pub struct FileConfig {
+    pub proxy: String,
+    pub gamma_host: String,
+    pub host: String,
+    pub chain_id: u64,
+    #[serde(default)]
+    pub accounts: Vec<AccountConfig>,
+    #[serde(default)]
+    pub trade: TradeConfig,
+}
+
+#[derive(Deserialize)]
+pub struct AccountConfig {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub account_type: String,
+    pub signature_type: Option<u8>,
+    pub private_key: SecretString,
+    pub api_key: Option<SecretString>,
+    pub api_secret: Option<SecretString>,
+    pub api_passphrase: Option<SecretString>,
+    pub host: Option<String>,
+    pub chain_id: Option<u64>,
+    pub funder: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+pub struct TradeConfig {
+    pub trader_mode: Option<String>,
+    pub account_mode: Option<String>,
+    pub market_mode: Option<String>,
+}
+
+impl TradeConfig {
+    fn is_live(&self) -> bool {
+        [&self.trader_mode, &self.account_mode, &self.market_mode]
+            .into_iter()
+            .all(|mode| mode.as_deref() == Some("real"))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct LiveConfig {
+    pub account_name: String,
+    pub signature_type: u8,
+    pub private_key: SecretString,
+    pub api_key: SecretString,
+    pub api_secret: SecretString,
+    pub api_passphrase: SecretString,
+    pub host: String,
+    pub gamma_host: String,
+    pub chain_id: u64,
+    pub funder: Option<String>,
+    pub proxy_url: String,
+}
+
+impl FileConfig {
+    pub fn load(path: impl AsRef<Path>) -> Result<Self> {
+        let path = path.as_ref();
+        let text = fs::read_to_string(path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        serde_yaml::from_str(&text)
+            .with_context(|| format!("failed to parse {}", path.display()))
+    }
+
+    pub fn into_runtime(self) -> Result<(Config, Option<LiveConfig>)> {
+        let mut market = Config::default();
+        market.proxy_url = self.proxy.clone();
+        market.clob_api_url = self.host.clone();
+        market.gamma_api_url = self.gamma_host.clone();
+        market.gamma_event_base =
+            format!("{}/events/slug/", self.gamma_host.trim_end_matches('/'));
+
+        if !self.trade.is_live() {
+            return Ok((market, None));
+        }
+
+        let mut long_accounts = self
+            .accounts
+            .into_iter()
+            .filter(|account| account.account_type == "long");
+        let account = long_accounts
+            .next()
+            .filter(|_| long_accounts.next().is_none())
+            .ok_or_else(|| {
+                anyhow::anyhow!("live trading requires exactly one account with type long")
+            })?;
+
+        account
+            .private_key
+            .require_non_empty("long-account private_key")?;
+        let api_key = required_secret(account.api_key, "long-account api_key")?;
+        let api_secret = required_secret(account.api_secret, "long-account api_secret")?;
+        let api_passphrase =
+            required_secret(account.api_passphrase, "long-account api_passphrase")?;
+        let signature_type = account.signature_type.unwrap_or(0);
+        if signature_type > 3 {
+            bail!("long-account signature_type must be between 0 and 3");
+        }
+
+        Ok((
+            market,
+            Some(LiveConfig {
+                account_name: account.name,
+                signature_type,
+                private_key: account.private_key,
+                api_key,
+                api_secret,
+                api_passphrase,
+                host: account.host.unwrap_or(self.host),
+                gamma_host: self.gamma_host,
+                chain_id: account.chain_id.unwrap_or(self.chain_id),
+                funder: account.funder.filter(|value| !value.trim().is_empty()),
+                proxy_url: self.proxy,
+            }),
+        ))
+    }
+}
+
+fn required_secret(value: Option<SecretString>, field: &str) -> Result<SecretString> {
+    let value = value.ok_or_else(|| anyhow::anyhow!("{field} must not be empty"))?;
+    value.require_non_empty(field)?;
+    Ok(value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const LIVE_YAML: &str = r#"
+proxy: http://127.0.0.1:7890
+gamma_host: https://gamma-api.polymarket.com
+host: https://clob.polymarket.com
+chain_id: 137
+accounts:
+  - name: long-test
+    type: long
+    signature_type: null
+    private_key: test-private
+    api_key: test-key
+    api_secret: test-secret
+    api_passphrase: test-passphrase
+    host: https://clob.polymarket.com
+    chain_id: 137
+    funder: null
+trade:
+  trader_mode: real
+  account_mode: real
+  market_mode: real
+"#;
 
     #[test]
     fn default_config_matches_requested_values() {
@@ -49,5 +226,86 @@ mod tests {
         assert_eq!(config.gamma_event_base, DEFAULT_GAMMA_EVENT_BASE);
         assert_eq!(config.market_ws_url, DEFAULT_MARKET_WS_URL);
         assert_eq!(config.log_path, PathBuf::from(DEFAULT_LOG_PATH));
+    }
+
+    #[test]
+    fn all_real_modes_select_unique_long_account_without_exposing_secrets() {
+        let file: FileConfig = serde_yaml::from_str(LIVE_YAML).unwrap();
+        let (market, live) = file.into_runtime().unwrap();
+        let live = live.unwrap();
+        let debug = format!("{live:?}");
+
+        assert_eq!(market.proxy_url, "http://127.0.0.1:7890");
+        assert_eq!(market.clob_api_url, "https://clob.polymarket.com");
+        assert_eq!(live.account_name, "long-test");
+        assert_eq!(live.signature_type, 0);
+        assert!(debug.contains("<redacted>"));
+        assert!(!debug.contains("test-private"));
+        assert!(!debug.contains("test-key"));
+        assert!(!debug.contains("test-secret"));
+        assert!(!debug.contains("test-passphrase"));
+    }
+
+    #[test]
+    fn any_non_real_mode_disables_live_account_validation() {
+        for field in ["trader_mode", "account_mode", "market_mode"] {
+            let yaml = LIVE_YAML
+                .replace(&format!("  {field}: real"), &format!("  {field}: mock"))
+                .replace("  - name: long-test", "  - name: short-test")
+                .replace("    type: long", "    type: short");
+            let file: FileConfig = serde_yaml::from_str(&yaml).unwrap();
+            let (_, live) = file.into_runtime().unwrap();
+
+            assert!(live.is_none(), "{field} must disable live trading");
+        }
+    }
+
+    #[test]
+    fn enabled_live_trading_requires_exactly_one_long_account() {
+        let missing: FileConfig =
+            serde_yaml::from_str(&LIVE_YAML.replace("    type: long", "    type: short")).unwrap();
+        assert_eq!(
+            missing.into_runtime().unwrap_err().to_string(),
+            "live trading requires exactly one account with type long"
+        );
+
+        let duplicate_yaml = LIVE_YAML.replace(
+            "trade:\n",
+            r#"  - name: second-long
+    type: long
+    signature_type: 1
+    private_key: other-private
+    api_key: other-key
+    api_secret: other-secret
+    api_passphrase: other-passphrase
+    host: https://clob.polymarket.com
+    chain_id: 137
+    funder: 0x0000000000000000000000000000000000000001
+trade:
+"#,
+        );
+        let duplicate: FileConfig = serde_yaml::from_str(&duplicate_yaml).unwrap();
+        assert_eq!(
+            duplicate.into_runtime().unwrap_err().to_string(),
+            "live trading requires exactly one account with type long"
+        );
+    }
+
+    #[test]
+    fn live_account_rejects_missing_credentials_and_invalid_signature_type() {
+        let missing_key: FileConfig =
+            serde_yaml::from_str(&LIVE_YAML.replace("api_key: test-key", "api_key: ''")).unwrap();
+        assert_eq!(
+            missing_key.into_runtime().unwrap_err().to_string(),
+            "long-account api_key must not be empty"
+        );
+
+        let invalid_signature: FileConfig =
+            serde_yaml::from_str(&LIVE_YAML.replace("signature_type: null", "signature_type: 4"))
+                .unwrap();
+        assert_eq!(
+            invalid_signature.into_runtime().unwrap_err().to_string(),
+            "long-account signature_type must be between 0 and 3"
+        );
     }
 }
