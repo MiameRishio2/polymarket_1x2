@@ -13,8 +13,8 @@
 
 ## 3. One-shot runtime integration
 
-- [ ] 3.1 Wire the fixed lifecycle once after initial order books, using the first discovered token and the selected long account only when the three-mode gate is enabled.
-- [ ] 3.2 Add tests proving non-live modes issue zero authenticated/write calls, empty-token and missing-quote paths fail closed, and WebSocket reconnect logic cannot repeat the live flow.
+- [x] 3.1 Wire the fixed lifecycle once after initial order books, using the first discovered token and the selected long account only when the three-mode gate is enabled.
+- [x] 3.2 Add tests proving non-live modes issue zero authenticated/write calls, empty-token and missing-quote paths fail closed, and WebSocket reconnect logic cannot repeat the live flow.
 
 ## 4. Documentation and verification
 

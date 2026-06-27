@@ -8,9 +8,12 @@ use rust_decimal::prelude::ToPrimitive;
 use serde_json::Value;
 
 use crate::polymarket::config::LiveConfig;
+use crate::polymarket::models::DiscoveredEvent;
 use crate::polymarket::order::{
-    ExecutorError, ExecutorFuture, LimitOrderIntent, OrderExecutor, OrderSide,
+    run_new_zealand_belgium_flow, ExecutorError, ExecutorFuture, LimitOrderIntent, OrderExecutor,
+    OrderFlowReceipt, OrderSide,
 };
+use crate::polymarket::quotes::QuoteState;
 use rs_clob_client_v2::types::{ApiKeyCreds, Chain, OrderType, UserLimitOrder};
 use rs_clob_client_v2::ClobClient;
 
@@ -22,8 +25,7 @@ struct LiveLimitOrder {
     side: rs_clob_client_v2::types::Side,
 }
 
-type TradingFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<Value, ExecutorError>> + Send + 'a>>;
+type TradingFuture<'a> = Pin<Box<dyn Future<Output = Result<Value, ExecutorError>> + Send + 'a>>;
 
 trait TradingApi {
     fn place<'a>(&'a mut self, order: LiveLimitOrder) -> TradingFuture<'a>;
@@ -75,10 +77,7 @@ impl<A> LiveOrderExecutor<A> {
 }
 
 impl<A: TradingApi + Send> OrderExecutor for LiveOrderExecutor<A> {
-    fn place_limit<'a>(
-        &'a mut self,
-        intent: &'a LimitOrderIntent,
-    ) -> ExecutorFuture<'a, String> {
+    fn place_limit<'a>(&'a mut self, intent: &'a LimitOrderIntent) -> ExecutorFuture<'a, String> {
         Box::pin(async move {
             let response = self.api.place(map_intent(intent)?).await?;
             accepted_order_id(&response)
@@ -121,9 +120,42 @@ pub fn create_live_executor(config: &LiveConfig) -> AnyResult<Box<dyn OrderExecu
     )
     .map_err(|_| anyhow::anyhow!("failed to initialize authenticated CLOB client"))?;
 
-    Ok(Box::new(LiveOrderExecutor::new(ClobTradingApi {
-        client,
-    })))
+    Ok(Box::new(LiveOrderExecutor::new(ClobTradingApi { client })))
+}
+
+pub async fn run_fixed_live_flow(
+    live: Option<&LiveConfig>,
+    event: &DiscoveredEvent,
+    state: &QuoteState,
+) -> AnyResult<Option<OrderFlowReceipt>> {
+    maybe_run_fixed_live_flow(live, event, state, create_live_executor).await
+}
+
+async fn maybe_run_fixed_live_flow<F>(
+    live: Option<&LiveConfig>,
+    event: &DiscoveredEvent,
+    state: &QuoteState,
+    create_executor: F,
+) -> AnyResult<Option<OrderFlowReceipt>>
+where
+    F: FnOnce(&LiveConfig) -> AnyResult<Box<dyn OrderExecutor>>,
+{
+    let Some(live) = live else {
+        return Ok(None);
+    };
+    let token = event
+        .tokens
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("live trading event has no tokens"))?;
+    if state.latest_quote(&token.asset_id).is_none() {
+        bail!("missing initial quote for live asset {}", token.asset_id);
+    }
+
+    let mut executor = create_executor(live)?;
+    let receipt = run_new_zealand_belgium_flow(state, &token.asset_id, executor.as_mut())
+        .await
+        .map_err(|_| anyhow::anyhow!("fixed live order flow failed"))?;
+    Ok(Some(receipt))
 }
 
 fn map_intent(intent: &LimitOrderIntent) -> Result<LiveLimitOrder, ExecutorError> {
@@ -182,10 +214,16 @@ fn cancellation_confirmed(value: &Value, order_id: &str) -> Result<(), ExecutorE
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::polymarket::config::FileConfig;
+    use crate::polymarket::models::{DiscoveredEvent, PriceLevel, TokenMeta};
+    use crate::polymarket::order::MockOrderExecutor;
     use crate::polymarket::order::{LimitOrderIntent, OrderExecutor, OrderSide};
+    use crate::polymarket::quotes::QuoteState;
     use rust_decimal::Decimal;
     use serde_json::json;
     use std::collections::VecDeque;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     #[derive(Default)]
     struct FakeApi {
@@ -316,7 +354,10 @@ mod tests {
 
         assert_eq!(order_id, "live-1");
         assert_eq!(executor.api.placed.len(), 1);
-        assert_eq!(executor.api.placed[0].side, rs_clob_client_v2::types::Side::Buy);
+        assert_eq!(
+            executor.api.placed[0].side,
+            rs_clob_client_v2::types::Side::Buy
+        );
     }
 
     #[tokio::test]
@@ -331,5 +372,140 @@ mod tests {
 
         assert_eq!(error.to_string(), "CLOB cancellation not confirmed");
         assert_eq!(executor.api.canceled, ["live-1"]);
+    }
+
+    fn event() -> DiscoveredEvent {
+        DiscoveredEvent {
+            slug: "test-event".into(),
+            title: "Test Event".into(),
+            tokens: vec![TokenMeta {
+                market_slug: "test-market".into(),
+                question: "Test?".into(),
+                outcome: "First".into(),
+                asset_id: "101".into(),
+            }],
+        }
+    }
+
+    fn quoted_state(event: &DiscoveredEvent) -> QuoteState {
+        let mut state = QuoteState::new(event.slug.clone(), event.tokens.clone());
+        state.apply_book(
+            "101",
+            vec![PriceLevel {
+                price: "0.01".into(),
+                size: "5".into(),
+            }],
+            vec![PriceLevel {
+                price: "0.02".into(),
+                size: "5".into(),
+            }],
+            "test",
+        );
+        state
+    }
+
+    fn live_config() -> LiveConfig {
+        let yaml = r#"
+proxy: http://127.0.0.1:7890
+gamma_host: https://gamma-api.polymarket.com
+host: https://clob.polymarket.com
+chain_id: 137
+accounts:
+  - name: long-test
+    type: long
+    signature_type: null
+    private_key: test-private
+    api_key: test-key
+    api_secret: test-secret
+    api_passphrase: test-passphrase
+    host: https://clob.polymarket.com
+    chain_id: 137
+    funder: null
+trade:
+  trader_mode: real
+  account_mode: real
+  market_mode: real
+"#;
+        let file: FileConfig = serde_yaml::from_str(yaml).unwrap();
+        file.into_runtime().unwrap().1.unwrap()
+    }
+
+    #[tokio::test]
+    async fn disabled_mode_does_not_create_executor() {
+        let event = event();
+        let state = quoted_state(&event);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let factory_calls = Arc::clone(&calls);
+
+        let receipt = maybe_run_fixed_live_flow(None, &event, &state, move |_| {
+            factory_calls.fetch_add(1, Ordering::SeqCst);
+            unreachable!("disabled mode must not create an executor")
+        })
+        .await
+        .unwrap();
+
+        assert!(receipt.is_none());
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn empty_event_and_missing_quote_fail_before_executor_creation() {
+        let live = live_config();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let empty_event = DiscoveredEvent {
+            slug: "empty".into(),
+            title: "Empty".into(),
+            tokens: Vec::new(),
+        };
+        let empty_state = QuoteState::new("empty", Vec::new());
+        let factory_calls = Arc::clone(&calls);
+        let empty_error =
+            maybe_run_fixed_live_flow(Some(&live), &empty_event, &empty_state, move |_| {
+                factory_calls.fetch_add(1, Ordering::SeqCst);
+                unreachable!("empty event must fail before executor creation")
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(empty_error.to_string(), "live trading event has no tokens");
+
+        let event = event();
+        let no_quote_state = QuoteState::new(event.slug.clone(), event.tokens.clone());
+        let factory_calls = Arc::clone(&calls);
+        let quote_error =
+            maybe_run_fixed_live_flow(Some(&live), &event, &no_quote_state, move |_| {
+                factory_calls.fetch_add(1, Ordering::SeqCst);
+                unreachable!("missing quote must fail before executor creation")
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(
+            quote_error.to_string(),
+            "missing initial quote for live asset 101"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn enabled_mode_runs_fixed_flow_once() {
+        let live = live_config();
+        let event = event();
+        let state = quoted_state(&event);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let factory_calls = Arc::clone(&calls);
+
+        let receipt = maybe_run_fixed_live_flow(Some(&live), &event, &state, move |_| {
+            factory_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(Box::new(MockOrderExecutor::scripted(
+                [Ok("live-buy".into()), Ok("live-sell".into())],
+                [],
+            )) as Box<dyn OrderExecutor>)
+        })
+        .await
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(receipt.buy_order_id, "live-buy");
+        assert_eq!(receipt.sell_order_id, "live-sell");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 }

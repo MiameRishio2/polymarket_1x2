@@ -10,6 +10,7 @@ use url::Url;
 use crate::polymarket::logging::QuoteLogger;
 use crate::polymarket::models::{DiscoveredEvent, PriceLevel, QuoteRecord};
 use crate::polymarket::quotes::QuoteState;
+use crate::polymarket::{config::LiveConfig, live::run_fixed_live_flow};
 
 pub fn subscription_payload(asset_ids: &[String]) -> Value {
     serde_json::json!({
@@ -37,6 +38,7 @@ pub fn parse_market_message(value: &Value, state: &mut QuoteState) -> Vec<QuoteR
 
 pub async fn run_market_stream(
     config: crate::polymarket::config::Config,
+    live: Option<LiveConfig>,
     event: DiscoveredEvent,
 ) -> Result<()> {
     let asset_ids: Vec<String> = event
@@ -65,6 +67,18 @@ pub async fn run_market_stream(
             record.ask_size
         );
         logger.append(&record)?;
+    }
+
+    if let Some(receipt) = run_fixed_live_flow(live.as_ref(), &event, &state).await? {
+        let token = &event.tokens[0];
+        println!(
+            "live fixed flow accepted for {} {} {} buy_order_id={} sell_order_id={}",
+            token.market_slug,
+            token.outcome,
+            token.asset_id,
+            receipt.buy_order_id,
+            receipt.sell_order_id
+        );
     }
 
     let payload = Message::Text(subscription_payload(&asset_ids).to_string().into());

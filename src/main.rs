@@ -9,9 +9,10 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("OddsPortal collection failed: {error:#}");
     }
 
-    let config = polymarket::config::Config::default();
+    let file_config = polymarket::config::FileConfig::load("config.yaml")?;
+    let (config, live) = file_config.into_runtime()?;
     let event = polymarket::discovery::discover_event(&config).await?;
-    polymarket::ws::run_market_stream(config, event).await
+    polymarket::ws::run_market_stream(config, live, event).await
 }
 
 fn install_crypto_provider() {
