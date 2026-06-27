@@ -11,6 +11,7 @@ use crate::polymarket::logging::QuoteLogger;
 use crate::polymarket::models::{DiscoveredEvent, PriceLevel, QuoteRecord};
 use crate::polymarket::order::SCENARIO_NAME;
 use crate::polymarket::quotes::QuoteState;
+use crate::polymarket::LOG_PREFIX;
 use crate::polymarket::{config::LiveConfig, live::run_fixed_live_flow};
 
 pub fn subscription_payload(asset_ids: &[String]) -> Value {
@@ -58,7 +59,7 @@ pub async fn run_market_stream(
         crate::polymarket::clob::load_initial_orderbooks(&clob_client, &event, &mut state).await?
     {
         println!(
-            "{} {} {} bid={:?}/{:?} ask={:?}/{:?}",
+            "{LOG_PREFIX} {} {} {} bid={:?}/{:?} ask={:?}/{:?}",
             record.market_slug,
             record.outcome,
             record.asset_id,
@@ -70,10 +71,21 @@ pub async fn run_market_stream(
         logger.append(&record)?;
     }
 
-    if let Some(receipt) = run_fixed_live_flow(live.as_ref(), &event, &state).await? {
+    let live_receipt = match run_fixed_live_flow(live.as_ref(), &event, &state).await {
+        Ok(receipt) => receipt,
+        Err(error) => {
+            eprintln!(
+                "{} fixed flow failed: {error:#}",
+                crate::polymarket::live::LOG_PREFIX
+            );
+            return Err(error);
+        }
+    };
+    if let Some(receipt) = live_receipt {
         let token = &event.tokens[0];
         println!(
-            "{} live fixed flow accepted for {} {} {} buy_order_id={} sell_order_id={}",
+            "{} {} fixed flow accepted for {} {} {} buy_order_id={} sell_order_id={}",
+            crate::polymarket::live::LOG_PREFIX,
             SCENARIO_NAME,
             token.market_slug,
             token.outcome,
@@ -86,11 +98,15 @@ pub async fn run_market_stream(
     let payload = Message::Text(subscription_payload(&asset_ids).to_string().into());
 
     loop {
+        println!("{LOG_PREFIX} connecting market websocket");
         match connect_ws_via_proxy(&config.market_ws_url, &config.proxy_url).await {
             Ok((ws, _response)) => {
                 let (mut write, mut read) = ws.split();
                 write.send(payload.clone()).await?;
-                println!("subscribed to {} Polymarket CLOB tokens", asset_ids.len());
+                println!(
+                    "{LOG_PREFIX} subscribed to {} Polymarket CLOB tokens",
+                    asset_ids.len()
+                );
 
                 while let Some(message) = read.next().await {
                     match message? {
@@ -98,7 +114,7 @@ pub async fn run_market_stream(
                             let value: Value = serde_json::from_str(&text)?;
                             for record in parse_market_message(&value, &mut state) {
                                 println!(
-                                    "{} {} {} bid={:?}/{:?} ask={:?}/{:?}",
+                                    "{LOG_PREFIX} {} {} {} bid={:?}/{:?} ask={:?}/{:?}",
                                     record.market_slug,
                                     record.outcome,
                                     record.asset_id,
@@ -115,8 +131,11 @@ pub async fn run_market_stream(
                         _ => {}
                     }
                 }
+                eprintln!("{LOG_PREFIX} market websocket disconnected; reconnecting");
             }
-            Err(error) => eprintln!("websocket connection failed: {error:#}"),
+            Err(error) => {
+                eprintln!("{LOG_PREFIX} websocket connection failed: {error:#}; reconnecting")
+            }
         }
 
         sleep(Duration::from_secs(3)).await;

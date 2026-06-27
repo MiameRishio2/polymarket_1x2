@@ -7,3 +7,5 @@ pub mod models;
 pub mod order;
 pub mod quotes;
 pub mod ws;
+
+pub(crate) const LOG_PREFIX: &str = "[polymarket]";

@@ -149,6 +149,12 @@ mod tests {
         assert!(rustls::crypto::CryptoProvider::get_default().is_some());
     }
 
+    #[test]
+    fn provider_log_prefixes_are_stable() {
+        assert_eq!(polymarket::LOG_PREFIX, "[polymarket]");
+        assert_eq!(oddsportal::LOG_PREFIX, "[oddsportal]");
+    }
+
     #[tokio::test]
     async fn supervisor_waits_for_remaining_provider_after_one_fails() {
         let completed = Arc::new(AtomicBool::new(false));

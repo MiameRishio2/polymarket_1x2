@@ -12,7 +12,7 @@ use anyhow::{anyhow, Context, Result};
 use reqwest::header::{HeaderMap, HeaderValue};
 use tokio::time::{sleep, Duration};
 
-const LOG_PREFIX: &str = "[oddsportal]";
+pub(crate) const LOG_PREFIX: &str = "[oddsportal]";
 
 pub async fn run_poll_loop(config: config::Config, interval: Duration) -> Result<()> {
     run_poll_loop_with(config, interval, None, collect_once).await
@@ -84,7 +84,7 @@ pub async fn collect_once(config: config::Config) -> Result<Vec<models::OddsPort
     let mut logger = logging::OddsPortalLogger::new(&config.log_path)?;
     for record in &records {
         println!(
-            "oddsportal {} {} {} {}",
+            "{LOG_PREFIX} {} {} {} {}",
             record.event_name, record.bookmaker_name, record.outcome, record.decimal_odds
         );
         logger.append(record)?;
@@ -159,6 +159,9 @@ async fn get_text_with_retries(client: &reqwest::Client, url: &str, label: &str)
         }
 
         if attempt < 3 {
+            if let Some(error) = &last_error {
+                eprintln!("{LOG_PREFIX} {label} attempt {attempt} failed; retrying: {error:#}");
+            }
             sleep(Duration::from_millis(500 * attempt)).await;
         }
     }

@@ -17,6 +17,8 @@ use crate::polymarket::quotes::QuoteState;
 use rs_clob_client_v2::types::{ApiKeyCreds, Chain, OrderType, UserLimitOrder};
 use rs_clob_client_v2::ClobClient;
 
+pub(crate) const LOG_PREFIX: &str = "[trade]";
+
 #[derive(Clone, Debug, PartialEq)]
 struct LiveLimitOrder {
     token_id: String,
@@ -224,6 +226,11 @@ mod tests {
     use std::collections::VecDeque;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+
+    #[test]
+    fn trade_log_prefix_is_stable() {
+        assert_eq!(LOG_PREFIX, "[trade]");
+    }
 
     #[derive(Default)]
     struct FakeApi {

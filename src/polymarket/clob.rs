@@ -5,6 +5,7 @@ use rs_clob_client_v2::ClobClient;
 use crate::polymarket::config::Config;
 use crate::polymarket::models::{DiscoveredEvent, PriceLevel, QuoteRecord};
 use crate::polymarket::quotes::QuoteState;
+use crate::polymarket::LOG_PREFIX;
 
 pub fn create_client(config: &Config) -> Result<ClobClient> {
     Ok(ClobClient::new(
@@ -49,7 +50,7 @@ pub async fn load_initial_orderbooks(
             }
             Err(error) => {
                 eprintln!(
-                    "rs-clob-client-v2 orderbook unavailable for {} {}: {}",
+                    "{LOG_PREFIX} rs-clob-client-v2 orderbook unavailable for {} {}: {}",
                     token.market_slug, token.outcome, error
                 );
             }
