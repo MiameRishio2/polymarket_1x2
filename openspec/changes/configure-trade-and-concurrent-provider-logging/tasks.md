@@ -20,11 +20,11 @@
 ## 4. Operational Configuration and Documentation
 
 - [x] 4.1 Update `config.yaml` with enabled Australia–Egypt provider targets, separate log paths, a 30-second OddsPortal interval, and `trade.enabled: false`.
-- [ ] 4.2 Update `ARCHITECTURE.md` for root configuration ownership and concurrent provider data flow.
-- [ ] 4.3 Update `DEPLOYMENT.md` for feature gates and simultaneous provider output inspection.
+- [x] 4.2 Update `ARCHITECTURE.md` for root configuration ownership and concurrent provider data flow.
+- [x] 4.3 Update `DEPLOYMENT.md` for feature gates and simultaneous provider output inspection.
 
 ## 5. Verification
 
-- [ ] 5.1 Run formatting and the complete Rust test suite.
+- [x] 5.1 Run formatting and the complete Rust test suite.
 - [ ] 5.2 Build the release binary and run a bounded, trading-disabled smoke test against the supplied Polymarket URL.
 - [ ] 5.3 Verify the captured process output contains both `[polymarket]` and `[oddsportal]` lines and verify Polymarket records reach its configured JSONL file.

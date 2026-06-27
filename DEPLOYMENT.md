@@ -46,10 +46,21 @@ Standard output and standard error are appended to
 
 ```bash
 tail -f logs/polymarket-1x2.out.log
+tail -f logs/polymarket_quotes.log
+tail -f logs/oddsportal_odds.log
 ```
 
-Application quote logs configured by the Rust binary remain separate from
-this process-output log.
+The first command shows both collectors' human-readable lifecycle output.
+`[polymarket]` labels Polymarket discovery, quote, WebSocket, reconnect, and
+terminal messages; `[oddsportal]` labels OddsPortal polling, retry, odds, and
+terminal messages; `[trade]` is reserved for the separately gated live-order
+lifecycle. A terminal error from one provider can appear while the other
+provider continues because enabled collectors are supervised independently.
+
+The other two commands follow the default provider JSONL files. Their paths
+can be changed with `polymarket.log_path` and `oddsportal.log_path`.
+Application JSONL records remain separate from process output and do not
+include the process-output prefixes.
 
 ## Stop
 
@@ -69,9 +80,14 @@ The process starts with the repository root as its working directory and reads
 `config.yaml` from there. Before every deployment:
 
 - Review the proxy, remote endpoints, market selection, and log paths.
-- Review `trade.trader_mode`, `trade.account_mode`, and
-  `trade.market_mode`. When all three values are `real`, the application can
-  enter its explicitly gated live-order path.
+- Keep `trade.enabled: false` for read-only collection. Live trading requires
+  `trade.enabled: true` in addition to `trade.trader_mode`,
+  `trade.account_mode`, and `trade.market_mode` all being `real`.
+- Treat an existing configuration without `trade.enabled` as read-only:
+  the field defaults to `false`, even when all three modes are already `real`.
+- Review `polymarket.enabled`, `oddsportal.enabled`, and the positive
+  `oddsportal.poll_interval_seconds`. Enabled providers run concurrently, and
+  at least one provider must be enabled.
 - Keep private keys and API credentials out of source control, shell history,
   process arguments, logs, fixtures, and test output.
 
@@ -89,6 +105,12 @@ Run `./scripts/build.sh`, resolve any compiler errors, and retry
 
 Inspect `logs/polymarket-1x2.out.log`. The start script removes its PID file
 when the new process does not remain alive through the startup check.
+
+If only one provider reports a terminal error, continue inspecting the log:
+the other provider is not cancelled and can keep collecting. A provider that
+stops is not automatically restarted inside the process. OddsPortal
+collection-pass failures are non-terminal and are retried after the configured
+polling interval.
 
 ### The PID file is invalid or belongs to another executable
 
