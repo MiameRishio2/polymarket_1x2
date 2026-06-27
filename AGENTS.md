@@ -24,5 +24,6 @@ This repository is a Rust binary for collecting Polymarket 1X2 market quotes. Ke
 ## Change Discipline
 
 - Preserve existing runtime behavior unless the task explicitly asks for a behavior change.
-- Do not introduce credentials, private-key handling, or order-placement behavior.
+- Introduce live-trading behavior, credentials, private-key handling, signing, or order placement only when the task explicitly requests it.
+- Keep secrets out of source control, logs, fixtures, and test output; isolate authenticated trading concerns under `src/polymarket/` and add focused safety validation.
 - Keep documentation synchronized with source layout changes.

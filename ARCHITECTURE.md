@@ -48,6 +48,8 @@ The Polymarket provider owns all Gamma API, CLOB REST, CLOB WebSocket, quote-sta
 
 The provider also exposes a simulation-only order lifecycle through an abstract executor and local mock. It consumes immutable quote snapshots, is not started by `main.rs`, and has no credential, signing, placement, or cancellation network capability.
 
+This describes the current implementation, not a prohibition on live trading. Explicitly requested live-trading work may add authenticated Polymarket execution paths under `src/polymarket/`, with credential loading, signing, placement, cancellation, and safety controls kept behind explicit provider boundaries.
+
 ### OddsPortal Provider
 
 The OddsPortal provider owns tournament/H2H page fetching, embedded state parsing, internal `.dat` odds request discovery, compressed payload decoding, 1X2 bookmaker odds normalization, and append-only odds logging. It is read-only and unauthenticated.
@@ -131,7 +133,7 @@ logs/oddsportal_odds.log
 - OddsPortal `/match-event/...dat` endpoint: internal compressed pre-match odds payload.
 - HTTP proxy default: `http://10.32.110.233:7890`.
 
-The collector is unauthenticated and read-only. It must not require private keys, API credentials, or order placement permissions.
+The current collector paths are unauthenticated and read-only. Future explicitly requested Polymarket trading paths may require API credentials, private keys, signing, and order-placement permissions. Such paths must keep secrets out of source control and logs, separate authenticated execution from public market-data collection, and validate orders before submission.
 
 ## Development Workflow
 
