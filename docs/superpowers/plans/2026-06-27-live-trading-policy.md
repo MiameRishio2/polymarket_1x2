@@ -21,6 +21,7 @@ base-ref: 89ebd963f43f173b191021966bd546083b01d25e
 - Keep secrets out of source control, logs, fixtures, and test output.
 - Keep OddsPortal read-only and unauthenticated.
 
+archived-with: 2026-06-27-remove-live-trading-prohibition
 ---
 
 ### Task 1: Update live-trading policy documentation

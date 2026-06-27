@@ -2,6 +2,8 @@
 comet_change: remove-live-trading-prohibition
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-27-remove-live-trading-prohibition
+status: final
 ---
 
 # Live-Trading Policy Design

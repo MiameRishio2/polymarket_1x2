@@ -1,5 +1,5 @@
 workflow: full
-phase: verify
+phase: archive
 build_mode: executing-plans
 build_pause: null
 isolation: branch
@@ -7,11 +7,11 @@ verify_mode: light
 base_ref: 2e31a093aa48995643e3e2f7e6156da8614598e9
 design_doc: docs/superpowers/specs/2026-06-27-live-trading-policy-design.md
 plan: docs/superpowers/plans/2026-06-27-live-trading-policy.md
-verify_result: pending
+verify_result: pass
 verification_report: docs/superpowers/reports/2026-06-27-remove-live-trading-prohibition-verify.md
 branch_status: handled
 created_at: 2026-06-27
-verified_at: null
-archived: false
-handoff_context: openspec/changes/remove-live-trading-prohibition/.comet/handoff/design-context.json
+verified_at: 2026-06-27
+archived: true
+handoff_context: openspec/changes/archive/2026-06-27-remove-live-trading-prohibition/.comet/handoff/design-context.json
 handoff_hash: aeedb2f61807e3ba8fa8e5a34bbfedc34d44034de200b55a3be3282e881d2edd
