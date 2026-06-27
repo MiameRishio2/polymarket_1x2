@@ -1,0 +1,14 @@
+{
+  "change": "add-polymarket-live-trading",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "9646bea89f0854cbf0625d07d5766b5654998bce40ed011786672f738b5ccf2d",
+  "files": [
+    { "path": "openspec/changes/add-polymarket-live-trading/proposal.md", "sha256": "33550f1986837b644591e289b93c3fc8719a96a3139c8bd38dd0d216fa6d8501" },
+    { "path": "openspec/changes/add-polymarket-live-trading/design.md", "sha256": "1d14f0495688fbad5dc1bd86158454a422bf267ddfb41c52fecc7be0a03a347f" },
+    { "path": "openspec/changes/add-polymarket-live-trading/tasks.md", "sha256": "e8b268f7455d7f5b321f366a26acff6ff9827a3558ba60b4836ee6db233f9e0c" },
+    { "path": "openspec/changes/add-polymarket-live-trading/specs/polymarket-live-trading/spec.md", "sha256": "fb47dadb619d45109c5a8c85392d6ba9b314bf106730e53d3a35594720f00dde" }
+  ]
+}

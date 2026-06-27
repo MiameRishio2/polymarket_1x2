@@ -1,0 +1,17 @@
+workflow: full
+phase: build
+build_mode: null
+build_pause: null
+isolation: null
+verify_mode: null
+base_ref: 5219e6918d07be7d219b55ca4eb9c4d9a53debc8
+design_doc: docs/superpowers/specs/2026-06-27-polymarket-live-trading-design.md
+plan: null
+verify_result: pending
+verification_report: null
+branch_status: pending
+created_at: 2026-06-27
+verified_at: null
+archived: false
+handoff_context: openspec/changes/add-polymarket-live-trading/.comet/handoff/design-context.json
+handoff_hash: 9646bea89f0854cbf0625d07d5766b5654998bce40ed011786672f738b5ccf2d
