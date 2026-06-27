@@ -2,6 +2,7 @@ pub mod clob;
 pub mod config;
 pub mod discovery;
 pub mod logging;
+pub mod live;
 pub mod models;
 pub mod order;
 pub mod quotes;

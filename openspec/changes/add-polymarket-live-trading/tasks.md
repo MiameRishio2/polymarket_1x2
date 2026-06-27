@@ -6,10 +6,10 @@
 
 ## 2. Proxied authenticated CLOB execution
 
-- [ ] 2.1 Add direct YAML and signer dependencies while retaining the existing proxied `rs-clob-client-v2` public order-book adapter.
-- [ ] 2.2 Implement client initialization from configured private key and L2 API credentials, signature type, funder, chain, host, and proxy without calling credential create/derive or logging secrets.
-- [ ] 2.3 Implement `LiveOrderExecutor` checked fixed-decimal boundary mapping, GTC signing/posting, strict success/order-ID validation, and confirmed single-order cancellation behind a mockable adapter.
-- [ ] 2.4 Add focused tests for side/decimal mapping, failed or malformed placement responses, buy failure, sell failure, confirmed cancellation, and rejected cancellation without live network writes.
+- [x] 2.1 Add direct YAML and signer dependencies while retaining the existing proxied `rs-clob-client-v2` public order-book adapter.
+- [x] 2.2 Implement client initialization from configured private key and L2 API credentials, signature type, funder, chain, host, and proxy without calling credential create/derive or logging secrets.
+- [x] 2.3 Implement `LiveOrderExecutor` checked fixed-decimal boundary mapping, GTC signing/posting, strict success/order-ID validation, and confirmed single-order cancellation behind a mockable adapter.
+- [x] 2.4 Add focused tests for side/decimal mapping, failed or malformed placement responses, buy failure, sell failure, confirmed cancellation, and rejected cancellation without live network writes.
 
 ## 3. One-shot runtime integration
 
