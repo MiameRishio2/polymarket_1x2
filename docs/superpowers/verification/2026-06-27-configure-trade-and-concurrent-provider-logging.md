@@ -23,11 +23,15 @@ stale, and no managed collector process was running. No process was stopped or
 signaled.
 
 The first run used the literal committed proxy placeholder and could not reach
-either upstream because the proxy address failed DNS resolution. A
-single-variable environmental retest temporarily replaced only that placeholder
-with the documented project default proxy, `http://10.32.110.233:7890`.
-Credentials, trading settings, production code, and all other configuration
-were unchanged.
+either upstream because the proxy address failed DNS resolution. An initial
+single-variable retest through the documented proxy produced Polymarket
+records, but all OddsPortal passes failed; provider prefixes alone were not
+accepted as live OddsPortal evidence.
+
+A stricter follow-up retest again temporarily replaced only the proxy
+placeholder with the documented project default proxy,
+`http://10.32.110.233:7890`. Credentials, trading settings, production code,
+and all other configuration were unchanged.
 
 Command:
 
@@ -43,14 +47,15 @@ Evidence checks:
 | Check | Exit | Evidence |
 | --- | ---: | --- |
 | Polymarket prefix search | 0 | 16 prefixed lines, including discovery and subscription |
-| OddsPortal prefix search | 0 | 5 prefixed polling lines |
-| `test -s logs/polymarket_quotes.log` | 0 | File contained 232 lines after the run |
+| OddsPortal prefix search | 0 | 84 prefixed lines |
+| OddsPortal successful pass search | 0 | 2 successful passes with 39 records each |
+| `test -s logs/polymarket_quotes.log` | 0 | File contained 244 lines after the run |
 | No trade placement output | 0 | 0 matching placement lines |
 
-The Polymarket JSONL grew from 84,968 bytes to 89,231 bytes during the retest,
-proving that this run delivered records to the configured file. OddsPortal
-emitted its required provider prefix and continued polling after pass failures,
-independently of the active Polymarket stream.
+During the strict retest, the Polymarket JSONL grew from 89,231 bytes to 93,883
+bytes and the OddsPortal JSONL grew from 11,650 bytes to 35,114 bytes. One
+OddsPortal pass failed transiently, followed by successful polling; the two
+successful passes and file growth prove live OddsPortal output from this run.
 
 ## Configuration restoration
 
@@ -59,5 +64,5 @@ Immediately after collecting evidence, `config.yaml` was restored with
 `git diff --exit-code -- config.yaml` exited 0, confirming that no proxy change
 remained. `trade.enabled` was still `false`.
 
-The bounded smoke and output criteria pass, so OpenSpec tasks 5.2 and 5.3 are
-complete.
+The strict bounded smoke and both-provider output criteria pass, so OpenSpec
+tasks 5.2 and 5.3 are complete.
