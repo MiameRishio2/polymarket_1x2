@@ -27,27 +27,27 @@ OpenSpec remains the normative source for behavior and scenarios:
 
 ## SDK Decision
 
-Replace the current third-party `rs-clob-client-v2` dependency with Polymarket's official `polymarket_client_sdk_v2`.
+Retain `rs-clob-client-v2 0.2.2` for both public and authenticated CLOB access because its constructor supports the required `config.yaml.proxy`.
 
-The official SDK is preferred because it:
+The selected account also supplies pre-existing L2 credentials:
 
-- uses typed decimal values for orders rather than introducing an `f64` boundary;
-- models authenticated and unauthenticated clients as distinct type states;
-- supports the current signature-type and funder authentication flow;
-- detects the exchange protocol from the configured V1 or V2 host;
-- exposes typed placement and cancellation responses.
+- `api_key`;
+- `api_secret`;
+- `api_passphrase`.
 
 Alternatives rejected:
 
-- Retaining the third-party client minimizes code churn but keeps older manual authentication and floating-point order inputs.
-- Raw REST duplicates EIP-712 signing, L1/L2 authentication, response parsing, and protocol-version behavior.
+- The official SDK has stronger typed-decimal and authentication-state APIs but does not expose programmatic HTTP proxy injection.
+- Forking the official SDK to add proxy injection creates an unnecessary maintenance surface for this fixed test flow.
+- Raw REST duplicates EIP-712 signing, L2 authentication, response parsing, and protocol behavior.
+- Calling `rs-clob-client-v2::create_or_derive_api_key` is prohibited because its credential-create fallback prints complete L1 authentication headers.
 
 Primary references:
 
 - https://docs.polymarket.com/api-reference/authentication
 - https://docs.polymarket.com/trading/orders/create
 - https://docs.polymarket.com/trading/orders/cancel
-- https://github.com/Polymarket/rs-clob-client-v2
+- https://docs.rs/rs-clob-client-v2/0.2.2
 
 ## Components
 
@@ -56,6 +56,7 @@ Primary references:
 Provider-local Serde models load only the fields needed by Polymarket while tolerating unrelated strategy and web sections. The selected long account supplies:
 
 - private key;
+- API key, API secret, and API passphrase;
 - signature type (`null` defaults to EOA `0`);
 - optional funder;
 - CLOB host;
@@ -75,26 +76,25 @@ If false, the runtime follows the current read-only collection path and never to
 
 ### Client factory
 
-The factory creates an unauthenticated official client for public order-book access. For the live path it:
+The factory retains the current unauthenticated client for public order-book access. For the live path it:
 
-1. parses the selected private key into an Alloy local signer;
-2. binds the configured chain ID;
-3. maps signature type `0..=3` to the SDK enum;
-4. applies the optional funder;
-5. authenticates through the SDK builder;
-6. returns an authenticated client without logging configuration or signer debug output.
+1. validates non-empty configured L2 API credentials;
+2. parses the selected private key into an Alloy local signer;
+3. maps chain ID to Polygon or Amoy;
+4. passes signature type `0..=3`, optional funder, host, root proxy, wallet, and `ApiKeyCreds` to `ClobClient::new`;
+5. returns the authenticated client without calling credential creation/derivation or logging configuration, signer, or headers.
 
 Error context identifies only the stage, such as `invalid long-account signer` or `CLOB authentication failed`.
 
 ### Live executor adapter
 
-`LiveOrderExecutor` implements the existing `OrderExecutor` trait. A smaller internal adapter trait isolates the official client for deterministic tests.
+`LiveOrderExecutor` implements the existing `OrderExecutor` trait. A smaller internal adapter trait isolates the CLOB client for deterministic tests.
 
 Placement:
 
 1. map `OrderSide` to the SDK side;
-2. preserve the `rust_decimal::Decimal` price and size;
-3. build, sign, and post a GTC limit order;
+2. convert only the validated fixed `rust_decimal::Decimal` values (`0.01`, `0.11`, and `5`) to the SDK's `f64` inputs and reject failed conversion;
+3. call `create_and_post_limit_order` with GTC;
 4. require the response to report success;
 5. require a non-empty order ID.
 
@@ -135,7 +135,7 @@ unique type: long account
 signer + signature type + funder
     |
     v
-official authenticated CLOB client
+proxied authenticated CLOB client
     |
     v
 first discovered token + initial quote
@@ -178,4 +178,4 @@ continue market WebSocket collection
 
 ## Rollback
 
-Operational rollback is immediate: set any of the three mode fields away from `real`. Code rollback removes the one-shot invocation and live adapter while the migrated official SDK can continue serving public order-book reads.
+Operational rollback is immediate: set any of the three mode fields away from `real`. Code rollback removes the one-shot invocation and live adapter while the existing proxied SDK continues serving public order-book reads.

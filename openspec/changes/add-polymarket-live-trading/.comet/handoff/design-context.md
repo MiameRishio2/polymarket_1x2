@@ -3,7 +3,7 @@
 - Change: add-polymarket-live-trading
 - Phase: design
 - Mode: compact
-- Context hash: 9646bea89f0854cbf0625d07d5766b5654998bce40ed011786672f738b5ccf2d
+- Context hash: e4bbe82da9994eb6d313edaac08e58fc5f43ed6d467144c66e94ddc74366b7d9
 
 Generated-by: comet-handoff.sh
 
@@ -13,7 +13,7 @@ OpenSpec remains the canonical capability spec. This handoff is a deterministic,
 
 - Source: openspec/changes/add-polymarket-live-trading/proposal.md
 - Lines: 1-30
-- SHA256: 33550f1986837b644591e289b93c3fc8719a96a3139c8bd38dd0d216fa6d8501
+- SHA256: 199e476b925071e8801dbe47f39ef755cba775e86ad1bca647ee05c17f99667a
 
 ```md
 ## Why
@@ -23,7 +23,7 @@ The repository currently models the fixed Polymarket buy/sell lifecycle only thr
 ## What Changes
 
 - Load Polymarket account, signature, funder, endpoint, proxy, and trade-mode settings from the tracked `config.yaml`.
-- Replace the current third-party CLOB crate with Polymarket's official `polymarket_client_sdk_v2`, then add a live `OrderExecutor` with wallet authentication, limit-order posting, strict response validation, and single-order cancellation.
+- Keep the existing `rs-clob-client-v2` integration so authenticated HTTP requests continue to use `config.yaml.proxy`, and add a live `OrderExecutor` with configured L2 credentials, wallet signing, strict response validation, and single-order cancellation.
 - Start the fixed live flow only when `trader_mode`, `account_mode`, and `market_mode` are all `real`.
 - Select the configured account whose `type` is `long` and the first token returned by event discovery.
 - Preserve the existing simulation semantics: post the sell immediately after the buy is accepted; if the sell fails, attempt one cancellation of the accepted buy.
@@ -44,20 +44,20 @@ None. The existing dry-run capability remains valid and provides the executor-in
 
 - Affected source: `src/main.rs` and Polymarket modules for configuration, CLOB client construction, and order execution.
 - Affected configuration: `config.yaml` trade and account fields.
-- Dependencies change from the third-party `rs-clob-client-v2` crate to Polymarket's official Rust SDK, plus YAML deserialization support.
+- Dependencies add YAML deserialization and the signer type required to construct the existing proxied CLOB client directly.
 - Runtime impact is limited to configurations where all three live mode gates are `real`; other configurations must not place or cancel orders.
 ```
 
 ## openspec/changes/add-polymarket-live-trading/design.md
 
 - Source: openspec/changes/add-polymarket-live-trading/design.md
-- Lines: 1-78
-- SHA256: 1d14f0495688fbad5dc1bd86158454a422bf267ddfb41c52fecc7be0a03a347f
+- Lines: 1-80
+- SHA256: 5b00105b01ee83553a977c3a53e5f4fde182bbfb767dedfff6b0bc3110a28622
 
 ```md
 ## Context
 
-The binary currently constructs an unauthenticated third-party `rs-clob-client-v2` client from hard-coded Polymarket defaults, loads initial books, and then enters the market WebSocket loop. `src/polymarket/order.rs` already expresses the required `0.01 × 5` buy, immediate `0.11 × 5` sell, and single-cancellation failure path through an executor trait, but only `MockOrderExecutor` implements that trait.
+The binary currently constructs an unauthenticated `rs-clob-client-v2` client from hard-coded Polymarket defaults, loads initial books, and then enters the market WebSocket loop. `src/polymarket/order.rs` already expresses the required `0.01 × 5` buy, immediate `0.11 × 5` sell, and single-cancellation failure path through an executor trait, but only `MockOrderExecutor` implements that trait.
 
 The tracked `config.yaml` already contains root endpoint/proxy settings, multiple account entries, and trade-mode fields. The live test path must use that file directly, choose the `type: long` account, and never expose its private key in logs or errors.
 
@@ -67,7 +67,7 @@ The tracked `config.yaml` already contains root endpoint/proxy settings, multipl
 
 - Parse the existing YAML configuration into typed Polymarket runtime settings.
 - Require `trader_mode`, `account_mode`, and `market_mode` to all equal `real` before any authenticated client or write request is created.
-- Migrate public CLOB access and authenticated signing to Polymarket's official `polymarket_client_sdk_v2`, using the selected long account's private key, signature type, funder, host, and chain.
+- Reuse `rs-clob-client-v2` for authenticated signing and proxy-routed trading, using the selected long account's private key, L2 API credentials, signature type, funder, host, and chain.
 - Reuse the executor-independent fixed flow with the first discovered token and the initial quote snapshot.
 - Run the live test flow exactly once per process start.
 - Keep credentials and signed payload details out of output.
@@ -93,15 +93,17 @@ Select exactly one account whose `type` equals `long`. Missing or duplicate long
 
 Alternative rejected: selecting the first account makes list ordering a hidden safety control.
 
-### Official SDK migration and authenticated client initialization
+### Proxied authenticated client with configured L2 credentials
 
-Replace the current third-party crate with Polymarket's official `polymarket_client_sdk_v2`. It provides typed decimal orders, compile-time authentication states, V1/V2 host detection, and the current signature/funder flow documented by Polymarket. Parse the configured private key into an Alloy local signer, configure the selected signature type and optional funder through the authentication builder, and authenticate before constructing the live executor. Initialization errors are wrapped with stage-only context and must not include the private key or full signed request.
+Retain `rs-clob-client-v2` because its constructor accepts the configured proxy URL used by this environment. Parse the configured private key into its Alloy signer, construct `ApiKeyCreds` from the selected account's `api_key`, `api_secret`, and `api_passphrase`, and pass wallet, credentials, signature type, funder, host, chain, and proxy directly to `ClobClient::new`.
 
-Alternatives rejected: retaining the third-party crate keeps an `f64` conversion boundary for order price/size and an older manual credential lifecycle; raw REST would duplicate signing and authentication logic. Persisting API credentials in the repository is unnecessary because the official client authenticates from the configured signer.
+Do not call `create_api_key` or `create_or_derive_api_key`: version `0.2.2` prints L1 authentication headers on the credential-creation path. Configuration and initialization errors are wrapped with stage-only context and must not include private keys, API credentials, or signed requests.
+
+Alternatives rejected: the official SDK does not expose programmatic HTTP proxy injection; forking it expands scope. Raw REST would duplicate signing and authentication logic. Calling the existing SDK's credential-creation path violates the no-auth-header logging requirement.
 
 ### Live executor behind the existing trait
 
-Add a `LiveOrderExecutor` that maps `LimitOrderIntent` to the official SDK's typed decimal limit-order builder, creates and signs a GTC order, posts it, and implements single-order cancellation. Placement succeeds only when the SDK response reports success and a non-empty order ID. Cancellation succeeds only when the response's `canceled` collection contains the requested ID; entries in `not_canceled` are failures. The fixed lifecycle remains in `run_new_zealand_belgium_flow`, preserving its current accepted-buy/immediate-sell semantics and at-most-one cancellation.
+Add a `LiveOrderExecutor` that maps `LimitOrderIntent` to `rs-clob-client-v2::UserLimitOrder`, converts only the fixed validated decimal values at the SDK boundary, creates and signs a GTC order, posts it, and implements single-order cancellation. Placement succeeds only when the JSON response reports success and a non-empty `orderID`. Cancellation succeeds only when the response's `canceled` collection contains the requested ID; entries in `not_canceled` are failures. The fixed lifecycle remains in `run_new_zealand_belgium_flow`, preserving its current accepted-buy/immediate-sell semantics and at-most-one cancellation.
 
 Alternative rejected: duplicating the lifecycle inside the client adapter would create divergent mock and live behavior.
 
@@ -139,7 +141,7 @@ None. The test-only first-token selection and immediate-sell semantics were expl
 
 - Source: openspec/changes/add-polymarket-live-trading/tasks.md
 - Lines: 1-22
-- SHA256: e8b268f7455d7f5b321f366a26acff6ff9827a3558ba60b4836ee6db233f9e0c
+- SHA256: 6f7ab8f3d78b453f93d5e7c04bd430d1ec540dedb3a5c1baa6cfe7bddbfef62a
 
 ```md
 ## 1. Configuration and gating
@@ -148,11 +150,11 @@ None. The test-only first-token selection and immediate-sell semantics were expl
 - [ ] 1.2 Remove `trade.order_mode` from `config.yaml` and implement the all-three-`real` gate so disabled modes do not parse credentials or create write-side clients.
 - [ ] 1.3 Implement exact `type: long` account selection, signature-type validation/defaulting, and sanitized configuration errors with missing/duplicate account tests.
 
-## 2. Official SDK and authenticated CLOB execution
+## 2. Proxied authenticated CLOB execution
 
-- [ ] 2.1 Replace the third-party CLOB dependency and public order-book adapter with Polymarket's official `polymarket_client_sdk_v2`, retaining focused read-path tests.
-- [ ] 2.2 Implement official-SDK signer and authentication-builder initialization without logging credential material.
-- [ ] 2.3 Implement `LiveOrderExecutor` typed-decimal limit mapping, GTC signing/posting, strict success/order-ID validation, and confirmed single-order cancellation behind a mockable adapter.
+- [ ] 2.1 Add direct YAML and signer dependencies while retaining the existing proxied `rs-clob-client-v2` public order-book adapter.
+- [ ] 2.2 Implement client initialization from configured private key and L2 API credentials, signature type, funder, chain, host, and proxy without calling credential create/derive or logging secrets.
+- [ ] 2.3 Implement `LiveOrderExecutor` exact fixed-decimal boundary mapping, GTC signing/posting, strict success/order-ID validation, and confirmed single-order cancellation behind a mockable adapter.
 - [ ] 2.4 Add focused tests for side/decimal mapping, failed or malformed placement responses, buy failure, sell failure, confirmed cancellation, and rejected cancellation without live network writes.
 
 ## 3. One-shot runtime integration
@@ -169,8 +171,8 @@ None. The test-only first-token selection and immediate-sell semantics were expl
 ## openspec/changes/add-polymarket-live-trading/specs/polymarket-live-trading/spec.md
 
 - Source: openspec/changes/add-polymarket-live-trading/specs/polymarket-live-trading/spec.md
-- Lines: 1-101
-- SHA256: fb47dadb619d45109c5a8c85392d6ba9b314bf106730e53d3a35594720f00dde
+- Lines: 1-109
+- SHA256: 6cbbb3d11d54dbb843b7c004eb0bd19206f63db74c8f090bb284f88ec22c2126
 
 [TRUNCATED]
 
@@ -199,8 +201,8 @@ The system SHALL select exactly one configured account whose `type` is `long` an
 - **WHEN** configuration contains zero or multiple accounts with `type: long`
 - **THEN** startup fails without constructing an authenticated client or issuing a write request
 
-### Requirement: Official SDK wallet authentication
-The system SHALL use Polymarket's official `polymarket_client_sdk_v2` for public CLOB access and authenticated trading, construct the signer from the selected account's configured private key, map a null signature type to EOA type `0`, accept configured signature types `0` through `3`, apply the optional funder, and authenticate through the SDK before trading.
+### Requirement: Configured proxied wallet authentication
+The system SHALL use `rs-clob-client-v2` with `config.yaml.proxy`, construct the signer from the selected account's configured private key, load `api_key`, `api_secret`, and `api_passphrase` from that account, map a null signature type to EOA type `0`, accept configured signature types `0` through `3`, and apply the optional funder. It MUST NOT call the SDK's API-key creation or derivation methods.
 
 #### Scenario: Null signature type uses EOA
 - **WHEN** the selected long account has `signature_type: null`
@@ -210,9 +212,17 @@ The system SHALL use Polymarket's official `polymarket_client_sdk_v2` for public
 - **WHEN** the selected long account provides a supported signature type and funder address
 - **THEN** both values are passed to the CLOB client used for signing and order creation
 
-#### Scenario: Authentication fails safely
-- **WHEN** the private key is invalid or API credential derivation fails
+#### Scenario: Configured L2 credentials are forwarded
+- **WHEN** the selected long account provides non-empty API key, secret, and passphrase values
+- **THEN** those values initialize the L2-authenticated client without invoking credential creation or derivation
+
+#### Scenario: Authentication configuration fails safely
+- **WHEN** the private key is invalid or any configured L2 credential is missing
 - **THEN** startup fails without placing an order and without including the private key in output
+
+#### Scenario: Configured proxy is used
+- **WHEN** the authenticated CLOB client is constructed
+- **THEN** its HTTP transport uses the root `config.yaml.proxy` value
 
 ### Requirement: First-token fixed live flow
 The system SHALL use the first token returned by event discovery and the initial quote snapshot to run one `0.01 × 5` limit buy followed immediately after accepted placement by one `0.11 × 5` limit sell.
@@ -230,7 +240,7 @@ The system SHALL use the first token returned by event discovery and the initial
 - **THEN** the lifecycle fails before any order placement
 
 ### Requirement: Live limit-order mapping
-The live executor SHALL map each validated `LimitOrderIntent` to an official-SDK signed GTC limit order with the same asset ID, side, decimal price, and decimal size. Placement SHALL succeed only when the response reports success and includes a non-empty order ID.
+The live executor SHALL map each validated `LimitOrderIntent` to an `rs-clob-client-v2` signed GTC limit order with the same asset ID and side and an exact boundary conversion of the validated fixed decimal price and size. Placement SHALL succeed only when the response reports success and includes a non-empty order ID.
 
 #### Scenario: Buy intent is posted as GTC
 - **WHEN** the lifecycle submits the fixed buy intent
@@ -246,14 +256,6 @@ The live executor SHALL map each validated `LimitOrderIntent` to an official-SDK
 
 ### Requirement: Sell failure cancellation
 The live executor SHALL preserve the existing fail-closed lifecycle: when the accepted buy has an order ID and the immediate sell fails, it attempts cancellation of that buy exactly once and performs no placement retry.
-
-#### Scenario: Sell fails after accepted buy
-- **WHEN** buy placement returns an order ID and sell placement fails
-- **THEN** the system calls live cancellation once for the buy order ID and terminates the lifecycle with the sell and cancellation results
-
-#### Scenario: Cancellation response does not confirm the order ID
-- **WHEN** cancellation returns successfully at the HTTP layer but the requested buy order ID is absent from `canceled` or present in `not_canceled`
-- **THEN** the lifecycle records cancellation as failed
 
 ```
 

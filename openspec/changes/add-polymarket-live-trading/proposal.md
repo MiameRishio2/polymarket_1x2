@@ -5,7 +5,7 @@ The repository currently models the fixed Polymarket buy/sell lifecycle only thr
 ## What Changes
 
 - Load Polymarket account, signature, funder, endpoint, proxy, and trade-mode settings from the tracked `config.yaml`.
-- Replace the current third-party CLOB crate with Polymarket's official `polymarket_client_sdk_v2`, then add a live `OrderExecutor` with wallet authentication, limit-order posting, strict response validation, and single-order cancellation.
+- Keep the existing `rs-clob-client-v2` integration so authenticated HTTP requests continue to use `config.yaml.proxy`, and add a live `OrderExecutor` with configured L2 credentials, wallet signing, strict response validation, and single-order cancellation.
 - Start the fixed live flow only when `trader_mode`, `account_mode`, and `market_mode` are all `real`.
 - Select the configured account whose `type` is `long` and the first token returned by event discovery.
 - Preserve the existing simulation semantics: post the sell immediately after the buy is accepted; if the sell fails, attempt one cancellation of the accepted buy.
@@ -26,5 +26,5 @@ None. The existing dry-run capability remains valid and provides the executor-in
 
 - Affected source: `src/main.rs` and Polymarket modules for configuration, CLOB client construction, and order execution.
 - Affected configuration: `config.yaml` trade and account fields.
-- Dependencies change from the third-party `rs-clob-client-v2` crate to Polymarket's official Rust SDK, plus YAML deserialization support.
+- Dependencies add YAML deserialization and the signer type required to construct the existing proxied CLOB client directly.
 - Runtime impact is limited to configurations where all three live mode gates are `real`; other configurations must not place or cancel orders.

@@ -22,8 +22,8 @@ The system SHALL select exactly one configured account whose `type` is `long` an
 - **WHEN** configuration contains zero or multiple accounts with `type: long`
 - **THEN** startup fails without constructing an authenticated client or issuing a write request
 
-### Requirement: Official SDK wallet authentication
-The system SHALL use Polymarket's official `polymarket_client_sdk_v2` for public CLOB access and authenticated trading, construct the signer from the selected account's configured private key, map a null signature type to EOA type `0`, accept configured signature types `0` through `3`, apply the optional funder, and authenticate through the SDK before trading.
+### Requirement: Configured proxied wallet authentication
+The system SHALL use `rs-clob-client-v2` with `config.yaml.proxy`, construct the signer from the selected account's configured private key, load `api_key`, `api_secret`, and `api_passphrase` from that account, map a null signature type to EOA type `0`, accept configured signature types `0` through `3`, and apply the optional funder. It MUST NOT call the SDK's API-key creation or derivation methods.
 
 #### Scenario: Null signature type uses EOA
 - **WHEN** the selected long account has `signature_type: null`
@@ -33,9 +33,17 @@ The system SHALL use Polymarket's official `polymarket_client_sdk_v2` for public
 - **WHEN** the selected long account provides a supported signature type and funder address
 - **THEN** both values are passed to the CLOB client used for signing and order creation
 
-#### Scenario: Authentication fails safely
-- **WHEN** the private key is invalid or API credential derivation fails
+#### Scenario: Configured L2 credentials are forwarded
+- **WHEN** the selected long account provides non-empty API key, secret, and passphrase values
+- **THEN** those values initialize the L2-authenticated client without invoking credential creation or derivation
+
+#### Scenario: Authentication configuration fails safely
+- **WHEN** the private key is invalid or any configured L2 credential is missing
 - **THEN** startup fails without placing an order and without including the private key in output
+
+#### Scenario: Configured proxy is used
+- **WHEN** the authenticated CLOB client is constructed
+- **THEN** its HTTP transport uses the root `config.yaml.proxy` value
 
 ### Requirement: First-token fixed live flow
 The system SHALL use the first token returned by event discovery and the initial quote snapshot to run one `0.01 × 5` limit buy followed immediately after accepted placement by one `0.11 × 5` limit sell.
@@ -53,7 +61,7 @@ The system SHALL use the first token returned by event discovery and the initial
 - **THEN** the lifecycle fails before any order placement
 
 ### Requirement: Live limit-order mapping
-The live executor SHALL map each validated `LimitOrderIntent` to an official-SDK signed GTC limit order with the same asset ID, side, decimal price, and decimal size. Placement SHALL succeed only when the response reports success and includes a non-empty order ID.
+The live executor SHALL map each validated `LimitOrderIntent` to an `rs-clob-client-v2` signed GTC limit order with the same asset ID and side and an exact boundary conversion of the validated fixed decimal price and size. Placement SHALL succeed only when the response reports success and includes a non-empty order ID.
 
 #### Scenario: Buy intent is posted as GTC
 - **WHEN** the lifecycle submits the fixed buy intent

@@ -4,11 +4,11 @@
 - [ ] 1.2 Remove `trade.order_mode` from `config.yaml` and implement the all-three-`real` gate so disabled modes do not parse credentials or create write-side clients.
 - [ ] 1.3 Implement exact `type: long` account selection, signature-type validation/defaulting, and sanitized configuration errors with missing/duplicate account tests.
 
-## 2. Official SDK and authenticated CLOB execution
+## 2. Proxied authenticated CLOB execution
 
-- [ ] 2.1 Replace the third-party CLOB dependency and public order-book adapter with Polymarket's official `polymarket_client_sdk_v2`, retaining focused read-path tests.
-- [ ] 2.2 Implement official-SDK signer and authentication-builder initialization without logging credential material.
-- [ ] 2.3 Implement `LiveOrderExecutor` typed-decimal limit mapping, GTC signing/posting, strict success/order-ID validation, and confirmed single-order cancellation behind a mockable adapter.
+- [ ] 2.1 Add direct YAML and signer dependencies while retaining the existing proxied `rs-clob-client-v2` public order-book adapter.
+- [ ] 2.2 Implement client initialization from configured private key and L2 API credentials, signature type, funder, chain, host, and proxy without calling credential create/derive or logging secrets.
+- [ ] 2.3 Implement `LiveOrderExecutor` exact fixed-decimal boundary mapping, GTC signing/posting, strict success/order-ID validation, and confirmed single-order cancellation behind a mockable adapter.
 - [ ] 2.4 Add focused tests for side/decimal mapping, failed or malformed placement responses, buy failure, sell failure, confirmed cancellation, and rejected cancellation without live network writes.
 
 ## 3. One-shot runtime integration
