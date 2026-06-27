@@ -2,6 +2,8 @@
 comet_change: polymarket-order-dry-run
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-27-polymarket-order-dry-run
+status: final
 ---
 
 # Polymarket Order Dry-Run Technical Design

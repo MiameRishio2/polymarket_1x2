@@ -2,6 +2,7 @@
 change: polymarket-order-dry-run
 design-doc: docs/superpowers/specs/2026-06-27-polymarket-order-dry-run-design.md
 base-ref: 678e33583a5d7bfb72be9e13b030b5df7308b231
+archived-with: 2026-06-27-polymarket-order-dry-run
 ---
 
 # Polymarket Order Dry-Run Implementation Plan
