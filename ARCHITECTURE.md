@@ -12,8 +12,9 @@ src/
 ├── polymarket/              # Polymarket provider implementation
 │   ├── mod.rs
 │   ├── clob.rs              # rs-clob-client-v2 setup and order book adaptation
-│   ├── config.rs            # Polymarket endpoints, proxy, and log path defaults
+│   ├── config.rs            # Typed config.yaml loading, live gate, accounts, endpoints, and defaults
 │   ├── discovery.rs         # Event slug extraction and Gamma event discovery
+│   ├── live.rs              # Proxied authenticated client, live executor, and one-shot orchestration
 │   ├── logging.rs           # Append-only quote JSONL logger
 │   ├── models.rs            # Polymarket quote and token data structures
 │   ├── order.rs             # Abstract executor and read-only order lifecycle simulation
@@ -40,15 +41,13 @@ Shared code should remain absent until both providers need it. When that happens
 
 ### Binary Entry Point
 
-`src/main.rs` installs the Rustls crypto provider, runs one OddsPortal collection pass for the configured match, creates the default Polymarket config, discovers the configured event, and starts the Polymarket market stream.
+`src/main.rs` installs the Rustls crypto provider, runs one OddsPortal collection pass for the configured match, loads `config.yaml`, derives the Polymarket market and optional live-account configuration, discovers the configured event, and starts the Polymarket market stream.
 
 ### Polymarket Provider
 
 The Polymarket provider owns all Gamma API, CLOB REST, CLOB WebSocket, quote-state, and log-writing details. Its public surface is intentionally small: config creation, event discovery, and market stream execution.
 
-The provider also exposes a simulation-only order lifecycle through an abstract executor and local mock. It consumes immutable quote snapshots, is not started by `main.rs`, and has no credential, signing, placement, or cancellation network capability.
-
-This describes the current implementation, not a prohibition on live trading. Explicitly requested live-trading work may add authenticated Polymarket execution paths under `src/polymarket/`, with credential loading, signing, placement, cancellation, and safety controls kept behind explicit provider boundaries.
+The provider exposes an executor-independent order lifecycle with a deterministic local mock for tests. It also implements the executor boundary with a live `rs-clob-client-v2` adapter. Live execution is enabled only when `trader_mode`, `account_mode`, and `market_mode` are all `real`; it selects exactly one `type: long` account and uses its configured signer, L2 credentials, signature type, funder, host, chain, and the root proxy. The client never calls SDK credential creation or derivation methods because that dependency logs L1 authentication headers on its create path.
 
 ### OddsPortal Provider
 
@@ -96,6 +95,34 @@ Mock OrderExecutor -> synthetic order ID
 Validated decimal sell intent or one simulated cancellation
 ```
 
+Gated live order data flow:
+
+```text
+config.yaml three-mode gate
+    |
+    +-- any mode not real --> read-only collection
+    |
+    v
+Unique type: long account
+    |
+    v
+Configured signer + L2 credentials + funder + proxy
+    |
+    v
+Initial quote for first discovered token
+    |
+    v
+One live GTC buy at 0.01 × 5
+    |
+    v
+Immediate live GTC sell at 0.11 × 5
+    |
+    +-- sell failure --> one attempted buy cancellation
+    |
+    v
+Market WebSocket reconnect loop (never repeats live flow)
+```
+
 OddsPortal data flow:
 
 ```text
@@ -128,12 +155,13 @@ logs/oddsportal_odds.log
 - Polymarket website URL: source for the configured event slug.
 - Polymarket Gamma API: event and child market metadata.
 - Polymarket CLOB API through `rs-clob-client-v2`: initial order book snapshots.
+- Polymarket authenticated CLOB API through the same proxied client: gated GTC placement and single-order cancellation.
 - Polymarket market WebSocket: live market updates.
 - OddsPortal tournament and H2H pages: embedded state for match and request discovery.
 - OddsPortal `/match-event/...dat` endpoint: internal compressed pre-match odds payload.
 - HTTP proxy default: `http://10.32.110.233:7890`.
 
-The current collector paths are unauthenticated and read-only. Future explicitly requested Polymarket trading paths may require API credentials, private keys, signing, and order-placement permissions. Such paths must keep secrets out of source control and logs, separate authenticated execution from public market-data collection, and validate orders before submission.
+The normal collection path remains unauthenticated and read-only. The explicitly gated live path reads test-account credentials from `config.yaml`, separates authenticated execution from public market-data collection, validates intents before submission, requires explicit placement/cancellation response confirmation, and never logs credential values or signed payloads.
 
 ## Development Workflow
 

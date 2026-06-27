@@ -18,5 +18,5 @@
 
 ## 4. Documentation and verification
 
-- [ ] 4.1 Update `ARCHITECTURE.md` to document typed configuration, authenticated executor ownership, one-shot activation, and preserved OddsPortal boundaries.
-- [ ] 4.2 Run formatting, focused tests, the full `cargo test` suite, Clippy, OpenSpec strict validation, and a credential/output scan.
+- [x] 4.1 Update `ARCHITECTURE.md` to document typed configuration, authenticated executor ownership, one-shot activation, and preserved OddsPortal boundaries.
+- [x] 4.2 Run formatting, focused tests, the full `cargo test` suite, Clippy, OpenSpec strict validation, and a credential/output scan.

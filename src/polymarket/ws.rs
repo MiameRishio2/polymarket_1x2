@@ -9,6 +9,7 @@ use url::Url;
 
 use crate::polymarket::logging::QuoteLogger;
 use crate::polymarket::models::{DiscoveredEvent, PriceLevel, QuoteRecord};
+use crate::polymarket::order::SCENARIO_NAME;
 use crate::polymarket::quotes::QuoteState;
 use crate::polymarket::{config::LiveConfig, live::run_fixed_live_flow};
 
@@ -72,7 +73,8 @@ pub async fn run_market_stream(
     if let Some(receipt) = run_fixed_live_flow(live.as_ref(), &event, &state).await? {
         let token = &event.tokens[0];
         println!(
-            "live fixed flow accepted for {} {} {} buy_order_id={} sell_order_id={}",
+            "{} live fixed flow accepted for {} {} {} buy_order_id={} sell_order_id={}",
+            SCENARIO_NAME,
             token.market_slug,
             token.outcome,
             token.asset_id,

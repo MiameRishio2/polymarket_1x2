@@ -1,7 +1,9 @@
-use std::collections::VecDeque;
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
+
+#[cfg(test)]
+use std::collections::VecDeque;
 
 use rust_decimal::Decimal;
 
@@ -91,18 +93,21 @@ pub trait OrderExecutor {
     fn cancel<'a>(&'a mut self, order_id: &'a str) -> ExecutorFuture<'a, ()>;
 }
 
+#[cfg(test)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ExecutorCall {
     Place(LimitOrderIntent),
     Cancel(String),
 }
 
+#[cfg(test)]
 pub struct MockOrderExecutor {
     placements: VecDeque<Result<String, ExecutorError>>,
     cancellations: VecDeque<Result<(), ExecutorError>>,
     calls: Vec<ExecutorCall>,
 }
 
+#[cfg(test)]
 impl MockOrderExecutor {
     pub fn scripted(
         placements: impl IntoIterator<Item = Result<String, ExecutorError>>,
@@ -120,6 +125,7 @@ impl MockOrderExecutor {
     }
 }
 
+#[cfg(test)]
 impl OrderExecutor for MockOrderExecutor {
     fn place_limit<'a>(&'a mut self, intent: &'a LimitOrderIntent) -> ExecutorFuture<'a, String> {
         self.calls.push(ExecutorCall::Place(intent.clone()));

@@ -77,7 +77,6 @@ pub struct FileConfig {
 
 #[derive(Deserialize)]
 pub struct AccountConfig {
-    pub name: String,
     #[serde(rename = "type")]
     pub account_type: String,
     pub signature_type: Option<u8>,
@@ -107,7 +106,6 @@ impl TradeConfig {
 
 #[derive(Clone, Debug)]
 pub struct LiveConfig {
-    pub account_name: String,
     pub signature_type: u8,
     pub private_key: SecretString,
     pub api_key: SecretString,
@@ -125,17 +123,17 @@ impl FileConfig {
         let path = path.as_ref();
         let text = fs::read_to_string(path)
             .with_context(|| format!("failed to read {}", path.display()))?;
-        serde_yaml::from_str(&text)
-            .with_context(|| format!("failed to parse {}", path.display()))
+        serde_yaml::from_str(&text).with_context(|| format!("failed to parse {}", path.display()))
     }
 
     pub fn into_runtime(self) -> Result<(Config, Option<LiveConfig>)> {
-        let mut market = Config::default();
-        market.proxy_url = self.proxy.clone();
-        market.clob_api_url = self.host.clone();
-        market.gamma_api_url = self.gamma_host.clone();
-        market.gamma_event_base =
-            format!("{}/events/slug/", self.gamma_host.trim_end_matches('/'));
+        let market = Config {
+            proxy_url: self.proxy.clone(),
+            clob_api_url: self.host.clone(),
+            gamma_api_url: self.gamma_host.clone(),
+            gamma_event_base: format!("{}/events/slug/", self.gamma_host.trim_end_matches('/')),
+            ..Config::default()
+        };
 
         if !self.trade.is_live() {
             return Ok((market, None));
@@ -167,7 +165,6 @@ impl FileConfig {
         Ok((
             market,
             Some(LiveConfig {
-                account_name: account.name,
                 signature_type,
                 private_key: account.private_key,
                 api_key,
@@ -237,7 +234,6 @@ trade:
 
         assert_eq!(market.proxy_url, "http://127.0.0.1:7890");
         assert_eq!(market.clob_api_url, "https://clob.polymarket.com");
-        assert_eq!(live.account_name, "long-test");
         assert_eq!(live.signature_type, 0);
         assert!(debug.contains("<redacted>"));
         assert!(!debug.contains("test-private"));
