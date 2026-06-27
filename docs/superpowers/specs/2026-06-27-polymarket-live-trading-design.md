@@ -2,6 +2,8 @@
 comet_change: add-polymarket-live-trading
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-27-add-polymarket-live-trading
+status: final
 ---
 
 # Polymarket Fixed-Flow Live Trading Design

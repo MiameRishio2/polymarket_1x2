@@ -2,6 +2,7 @@
 change: add-polymarket-live-trading
 design-doc: docs/superpowers/specs/2026-06-27-polymarket-live-trading-design.md
 base-ref: 670ca87f5a40ab2f4d495c844539fc1d3a151450
+archived-with: 2026-06-27-add-polymarket-live-trading
 ---
 
 # Polymarket Fixed-Flow Live Trading Implementation Plan

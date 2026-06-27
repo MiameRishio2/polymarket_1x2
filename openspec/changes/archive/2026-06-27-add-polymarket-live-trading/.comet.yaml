@@ -1,5 +1,5 @@
 workflow: full
-phase: verify
+phase: archive
 build_mode: executing-plans
 build_pause: null
 isolation: branch
@@ -7,11 +7,11 @@ verify_mode: full
 base_ref: 5219e6918d07be7d219b55ca4eb9c4d9a53debc8
 design_doc: docs/superpowers/specs/2026-06-27-polymarket-live-trading-design.md
 plan: docs/superpowers/plans/2026-06-27-polymarket-live-trading.md
-verify_result: pending
+verify_result: pass
 verification_report: docs/superpowers/reports/2026-06-27-add-polymarket-live-trading-verify.md
 branch_status: handled
 created_at: 2026-06-27
-verified_at: null
-archived: false
-handoff_context: openspec/changes/add-polymarket-live-trading/.comet/handoff/design-context.json
+verified_at: 2026-06-27
+archived: true
+handoff_context: openspec/changes/archive/2026-06-27-add-polymarket-live-trading/.comet/handoff/design-context.json
 handoff_hash: 08370e41eda2941d64643d922dc186a234d712da0902aa84c2d91b506029935d
