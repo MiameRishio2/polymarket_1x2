@@ -105,6 +105,10 @@ impl QuoteState {
         self.record(asset_id, source)
     }
 
+    pub fn latest_quote(&self, asset_id: &str) -> Option<QuoteRecord> {
+        self.record(asset_id, "snapshot")
+    }
+
     fn record(&self, asset_id: &str, source: &str) -> Option<QuoteRecord> {
         let token = self.tokens.get(asset_id)?;
         let quote = self.quotes.get(asset_id)?;
@@ -232,5 +236,37 @@ mod tests {
         assert_eq!(record.bid_size.as_deref(), Some("10"));
         assert_eq!(record.ask_price.as_deref(), Some("0.63"));
         assert_eq!(record.ask_size.as_deref(), Some("40"));
+    }
+
+    #[test]
+    fn latest_quote_returns_a_clone_without_mutating_state() {
+        let mut state = QuoteState::new("event", vec![token()]);
+        state.apply_book(
+            "101",
+            vec![PriceLevel {
+                price: "0.61".to_string(),
+                size: "10".to_string(),
+            }],
+            vec![PriceLevel {
+                price: "0.64".to_string(),
+                size: "40".to_string(),
+            }],
+            "book",
+        );
+
+        let first = state.latest_quote("101").unwrap();
+        let second = state.latest_quote("101").unwrap();
+
+        assert_eq!(first.asset_id, "101");
+        assert_eq!(first.bid_price.as_deref(), Some("0.61"));
+        assert_eq!(second.ask_price.as_deref(), Some("0.64"));
+    }
+
+    #[test]
+    fn latest_quote_is_none_before_an_asset_update() {
+        let state = QuoteState::new("event", vec![token()]);
+
+        assert!(state.latest_quote("101").is_none());
+        assert!(state.latest_quote("unknown").is_none());
     }
 }
