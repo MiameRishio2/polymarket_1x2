@@ -1,3 +1,4 @@
+mod config;
 mod oddsportal;
 mod polymarket;
 
@@ -9,8 +10,11 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("OddsPortal collection failed: {error:#}");
     }
 
-    let file_config = polymarket::config::FileConfig::load("config.yaml")?;
-    let (config, live) = file_config.into_runtime()?;
+    let runtime = config::FileConfig::load("config.yaml")?.into_runtime()?;
+    let polymarket = runtime
+        .polymarket
+        .ok_or_else(|| anyhow::anyhow!("polymarket collector must be enabled"))?;
+    let config::PolymarketRuntime { config, live } = polymarket;
     let event = polymarket::discovery::discover_event(&config).await?;
     polymarket::ws::run_market_stream(config, live, event).await
 }

@@ -214,7 +214,7 @@ fn cancellation_confirmed(value: &Value, order_id: &str) -> Result<(), ExecutorE
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::polymarket::config::FileConfig;
+    use crate::config::FileConfig;
     use crate::polymarket::models::{DiscoveredEvent, PriceLevel, TokenMeta};
     use crate::polymarket::order::MockOrderExecutor;
     use crate::polymarket::order::{LimitOrderIntent, OrderExecutor, OrderSide};
@@ -422,12 +422,18 @@ accounts:
     chain_id: 137
     funder: null
 trade:
+  enabled: true
   trader_mode: real
   account_mode: real
   market_mode: real
 "#;
         let file: FileConfig = serde_yaml::from_str(yaml).unwrap();
-        file.into_runtime().unwrap().1.unwrap()
+        file.into_runtime()
+            .unwrap()
+            .polymarket
+            .unwrap()
+            .live
+            .unwrap()
     }
 
     #[tokio::test]
