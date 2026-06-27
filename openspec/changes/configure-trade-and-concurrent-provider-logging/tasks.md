@@ -6,9 +6,9 @@
 
 ## 2. Concurrent Provider Runtime
 
-- [ ] 2.1 Add failing orchestration tests for enabled-provider selection, no-provider rejection, and independent task completion handling.
+- [x] 2.1 Add failing orchestration tests for enabled-provider selection, no-provider rejection, and independent task completion handling.
 - [x] 2.2 Implement the OddsPortal polling loop with success/error reporting, interval waits, and continued polling after a failed pass.
-- [ ] 2.3 Replace sequential startup with independently spawned enabled provider tasks that do not cancel each other on one provider's failure.
+- [x] 2.3 Replace sequential startup with independently spawned enabled provider tasks that do not cancel each other on one provider's failure.
 
 ## 3. Provider-Attributed Output
 
