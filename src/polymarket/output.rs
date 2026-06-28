@@ -57,10 +57,15 @@ impl PolymarketOddsObservation {
 }
 
 pub fn write_observation<T: Serialize>(observation: &T) -> Result<()> {
-    let line = serde_json::to_string(observation)?;
     let stdout = std::io::stdout();
     let mut lock = stdout.lock();
-    writeln!(lock, "{line}")?;
+    write_observation_to(&mut lock, observation)?;
+    Ok(())
+}
+
+fn write_observation_to<W: Write, T: Serialize>(writer: &mut W, observation: &T) -> Result<()> {
+    serde_json::to_writer(&mut *writer, observation)?;
+    writer.write_all(b"\n")?;
     Ok(())
 }
 
@@ -117,6 +122,22 @@ mod tests {
             "Canada"
         )
         .is_none());
+    }
+
+    #[test]
+    fn writes_one_newline_terminated_json_line() {
+        let observation = serde_json::json!({
+            "provider": "polymarket",
+            "type": "polymarket_odds"
+        });
+        let mut sink = Vec::new();
+
+        write_observation_to(&mut sink, &observation).unwrap();
+
+        assert_eq!(sink.iter().filter(|byte| **byte == b'\n').count(), 1);
+        assert_eq!(sink.last(), Some(&b'\n'));
+        let parsed: serde_json::Value = serde_json::from_slice(&sink).unwrap();
+        assert_eq!(parsed, observation);
     }
 
     fn token_fixture(result: MatchResult) -> TokenMeta {

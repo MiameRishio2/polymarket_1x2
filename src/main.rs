@@ -93,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
             let mut providers = HashMap::new();
 
             if let Some(runtime) = runtime.polymarket {
-                println!(
+                eprintln!(
                     "[polymarket] starting collector for {} vs {}",
                     runtime.config.home_team, runtime.config.away_team
                 );
