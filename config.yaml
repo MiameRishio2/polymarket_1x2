@@ -52,13 +52,13 @@ strategy:
     high_risk_size_multiplier: 0.5
 polymarket:
   enabled: true
-  url: https://polymarket.com/ja/sports/world-cup/fifwc-aus-egy-2026-07-03
+  url: https://polymarket.com/ja/sports/world-cup/fifwc-jor-arg-2026-06-27
   log_path: logs/polymarket_quotes.log
 oddsportal:
   enabled: true
   tournament_url: https://www.oddsportal.com/football/world/world-championship-2026/
-  home_team: Australia
-  away_team: Egypt
+  home_team: Jordan
+  away_team: Argentina
   log_path: logs/oddsportal_odds.log
   poll_interval_seconds: 30
 trade:

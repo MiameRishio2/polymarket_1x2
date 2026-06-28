@@ -170,6 +170,24 @@ trade:
     }
 
     #[test]
+    fn committed_config_targets_jordan_argentina_with_trading_disabled() {
+        let runtime = FileConfig::parse(include_str!("../config.yaml"))
+            .unwrap()
+            .into_runtime()
+            .unwrap();
+        let polymarket = runtime.polymarket.unwrap();
+        let oddsportal = runtime.oddsportal.unwrap();
+
+        assert_eq!(
+            polymarket.config.polymarket_url,
+            "https://polymarket.com/ja/sports/world-cup/fifwc-jor-arg-2026-06-27"
+        );
+        assert!(polymarket.live.is_none());
+        assert_eq!(oddsportal.config.home_team, "Jordan");
+        assert_eq!(oddsportal.config.away_team, "Argentina");
+    }
+
+    #[test]
     fn provider_enabled_flags_default_true() {
         let yaml = BASE
             .replace("  enabled: true\n", "")

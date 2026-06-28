@@ -123,11 +123,11 @@ mod tests {
     }
 
     #[test]
-    fn extracts_supplied_localized_australia_egypt_slug() {
+    fn extracts_supplied_localized_jordan_argentina_slug() {
         assert_eq!(
-            extract_slug("https://polymarket.com/ja/sports/world-cup/fifwc-aus-egy-2026-07-03")
+            extract_slug("https://polymarket.com/ja/sports/world-cup/fifwc-jor-arg-2026-06-27")
                 .unwrap(),
-            "fifwc-aus-egy-2026-07-03"
+            "fifwc-jor-arg-2026-06-27"
         );
     }
 
