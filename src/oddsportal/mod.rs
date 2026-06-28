@@ -4,6 +4,8 @@ pub mod discovery;
 pub mod logging;
 pub mod models;
 pub mod odds;
+pub mod output;
+pub mod score;
 
 use std::future::Future;
 use std::time::{SystemTime, UNIX_EPOCH};
