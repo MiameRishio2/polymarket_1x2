@@ -29,9 +29,9 @@ pub struct OddsPortalRuntime {
 #[derive(Deserialize)]
 pub struct FileConfig {
     proxy: String,
-    gamma_host: String,
-    host: String,
-    chain_id: u64,
+    gamma_host: Option<String>,
+    host: Option<String>,
+    chain_id: Option<u64>,
     #[serde(default)]
     accounts: Vec<AccountConfig>,
     #[serde(default)]
@@ -81,12 +81,21 @@ impl FileConfig {
         }
 
         let polymarket = if self.polymarket.enabled {
+            let gamma_host = self.gamma_host.ok_or_else(|| {
+                anyhow::anyhow!("polymarket.gamma_host is required when polymarket is enabled")
+            })?;
+            let host = self.host.ok_or_else(|| {
+                anyhow::anyhow!("polymarket.host is required when polymarket is enabled")
+            })?;
+            let chain_id = self.chain_id.ok_or_else(|| {
+                anyhow::anyhow!("polymarket.chain_id is required when polymarket is enabled")
+            })?;
             let defaults = crate::polymarket::config::Config::default();
             let (config, live) = crate::polymarket::config::build_runtime(RuntimeInput {
                 proxy_url: self.proxy.clone(),
-                gamma_host: self.gamma_host,
-                clob_host: self.host,
-                chain_id: self.chain_id,
+                gamma_host,
+                clob_host: host,
+                chain_id,
                 accounts: self.accounts,
                 trade: self.trade,
                 polymarket_url: self.polymarket.url.unwrap_or(defaults.polymarket_url),
@@ -204,5 +213,70 @@ trade:
                 .to_string(),
             "at least one provider collector must be enabled"
         );
+    }
+
+    #[test]
+    fn oddsportal_only_does_not_require_polymarket_settings() {
+        let yaml = r#"
+proxy: http://127.0.0.1:7890
+polymarket:
+  enabled: false
+oddsportal:
+  enabled: true
+  poll_interval_seconds: 30
+"#;
+
+        let runtime = FileConfig::parse(yaml).unwrap().into_runtime().unwrap();
+
+        assert!(runtime.polymarket.is_none());
+        assert!(runtime.oddsportal.is_some());
+    }
+
+    #[test]
+    fn polymarket_only_ignores_invalid_disabled_oddsportal_interval() {
+        let yaml = BASE
+            .replace(
+                "oddsportal:\n  enabled: true",
+                "oddsportal:\n  enabled: false",
+            )
+            .replace("poll_interval_seconds: 30", "poll_interval_seconds: 0");
+
+        let runtime = FileConfig::parse(&yaml).unwrap().into_runtime().unwrap();
+
+        assert!(runtime.polymarket.is_some());
+        assert!(runtime.oddsportal.is_none());
+    }
+
+    #[test]
+    fn enabled_polymarket_requires_each_provider_setting_with_context() {
+        for (field, expected) in [
+            (
+                "gamma_host",
+                "polymarket.gamma_host is required when polymarket is enabled",
+            ),
+            (
+                "host",
+                "polymarket.host is required when polymarket is enabled",
+            ),
+            (
+                "chain_id",
+                "polymarket.chain_id is required when polymarket is enabled",
+            ),
+        ] {
+            let yaml = BASE
+                .lines()
+                .filter(|line| !line.starts_with(&format!("{field}:")))
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            assert_eq!(
+                FileConfig::parse(&yaml)
+                    .unwrap()
+                    .into_runtime()
+                    .unwrap_err()
+                    .to_string(),
+                expected
+            );
+        }
     }
 }

@@ -28,3 +28,8 @@
 - [x] 5.1 Run formatting and the complete Rust test suite.
 - [x] 5.2 Build the release binary and run a bounded, trading-disabled smoke test against the supplied Polymarket URL.
 - [x] 5.3 Verify the captured process output contains both `[polymarket]` and `[oddsportal]` lines and verify Polymarket records reach its configured JSONL file.
+
+## 6. Final Review Hardening
+
+- [x] 6.1 Add single-provider configuration matrix tests and skip validation for disabled provider-specific settings.
+- [x] 6.2 Emit OddsPortal pass-start output and cover immediate-first and repeated-success polling behavior.

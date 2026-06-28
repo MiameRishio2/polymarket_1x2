@@ -47,7 +47,7 @@ impl Default for FileConfig {
 
 impl FileConfig {
     pub fn into_runtime(self, proxy_url: Option<String>) -> Result<(bool, Config, Duration)> {
-        if self.poll_interval_seconds == 0 {
+        if self.enabled && self.poll_interval_seconds == 0 {
             bail!("oddsportal.poll_interval_seconds must be greater than zero");
         }
 
