@@ -2,6 +2,7 @@
 change: configure-trade-and-concurrent-provider-logging
 design-doc: docs/superpowers/specs/2026-06-27-configure-trade-and-concurrent-provider-logging-design.md
 base-ref: cf601acd3a9d7b6a1e9d87dba2af6fc6507b08f8
+archived-with: 2026-06-28-configure-trade-and-concurrent-provider-logging
 ---
 
 # Configurable Trade and Concurrent Provider Logging Implementation Plan
@@ -25,6 +26,7 @@ base-ref: cf601acd3a9d7b6a1e9d87dba2af6fc6507b08f8
 - Preserve both provider JSONL schemas.
 - Run `cargo test` after Rust changes.
 
+archived-with: 2026-06-28-configure-trade-and-concurrent-provider-logging
 ---
 
 ### Task 1: Root Configuration and Independent Trade Gate
@@ -205,6 +207,7 @@ git commit -m "feat: configure provider runtimes and trade gate"
 
 Mark OpenSpec tasks 1.1, 1.2, and 1.3 complete in the same commit.
 
+archived-with: 2026-06-28-configure-trade-and-concurrent-provider-logging
 ---
 
 ### Task 2: OddsPortal Runtime Configuration and Polling Loop
@@ -340,6 +343,7 @@ git commit -m "feat: poll configured OddsPortal target"
 
 Mark OpenSpec task 2.2 complete; task 1.1 may already cover the root OddsPortal settings.
 
+archived-with: 2026-06-28-configure-trade-and-concurrent-provider-logging
 ---
 
 ### Task 3: Concurrent Provider Supervision
@@ -437,6 +441,7 @@ git commit -m "feat: supervise provider collectors concurrently"
 
 Mark OpenSpec tasks 2.1 and 2.3 complete.
 
+archived-with: 2026-06-28-configure-trade-and-concurrent-provider-logging
 ---
 
 ### Task 4: Provider-Attributed Output and Operational Config
@@ -545,6 +550,7 @@ git commit -m "feat: attribute concurrent provider output"
 
 Mark OpenSpec tasks 3.1 through 3.4 and 4.1 complete.
 
+archived-with: 2026-06-28-configure-trade-and-concurrent-provider-logging
 ---
 
 ### Task 5: Architecture, Deployment, and Full Verification

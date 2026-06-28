@@ -2,6 +2,8 @@
 comet_change: configure-trade-and-concurrent-provider-logging
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-28-configure-trade-and-concurrent-provider-logging
+status: final
 ---
 
 # Configurable Trade and Concurrent Provider Logging
