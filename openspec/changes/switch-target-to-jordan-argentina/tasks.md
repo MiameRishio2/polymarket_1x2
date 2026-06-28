@@ -5,4 +5,4 @@
 
 ## 2. Runtime Verification
 
-- [ ] 2.1 Build and run a bounded trading-disabled smoke test with a reachable temporary proxy, then confirm both provider logs and JSONL output.
+- [x] 2.1 Build and run a bounded trading-disabled smoke test with a reachable temporary proxy, then confirm both provider logs and JSONL output.
