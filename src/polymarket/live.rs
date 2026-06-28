@@ -390,6 +390,7 @@ mod tests {
                 question: "Test?".into(),
                 outcome: "First".into(),
                 asset_id: "101".into(),
+                result: None,
             }],
         }
     }

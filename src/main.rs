@@ -94,8 +94,8 @@ async fn main() -> anyhow::Result<()> {
 
             if let Some(runtime) = runtime.polymarket {
                 println!(
-                    "[polymarket] starting collector for {}",
-                    runtime.config.polymarket_url
+                    "[polymarket] starting collector for {} vs {}",
+                    runtime.config.home_team, runtime.config.away_team
                 );
                 spawn_local_provider(
                     &mut tasks,

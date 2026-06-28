@@ -167,6 +167,7 @@ mod tests {
             question: "Will Germany win on 2026-06-25?".to_string(),
             outcome: "Yes".to_string(),
             asset_id: "101".to_string(),
+            result: None,
         }
     }
 

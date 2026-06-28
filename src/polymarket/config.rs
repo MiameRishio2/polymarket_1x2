@@ -4,8 +4,6 @@ use std::path::PathBuf;
 use anyhow::{bail, Result};
 use serde::Deserialize;
 
-pub const DEFAULT_POLYMARKET_URL: &str =
-    "https://polymarket.com/sports/world-cup/fifwc-nor-fra-2026-06-26";
 pub const DEFAULT_PROXY_URL: &str = "http://10.32.110.233:7890";
 pub const DEFAULT_CLOB_API_URL: &str = "https://clob.polymarket.com";
 pub const DEFAULT_GAMMA_API_URL: &str = "https://gamma-api.polymarket.com";
@@ -18,8 +16,6 @@ pub const DEFAULT_LOG_PATH: &str = "logs/polymarket_quotes.log";
 pub struct Config {
     pub home_team: String,
     pub away_team: String,
-    // Temporary compatibility bridge until team-name discovery replaces exact-slug discovery.
-    pub polymarket_url: String,
     pub proxy_url: String,
     pub clob_api_url: String,
     pub gamma_api_url: String,
@@ -34,7 +30,6 @@ impl Default for Config {
         Self {
             home_team: String::new(),
             away_team: String::new(),
-            polymarket_url: DEFAULT_POLYMARKET_URL.to_string(),
             proxy_url: DEFAULT_PROXY_URL.to_string(),
             clob_api_url: DEFAULT_CLOB_API_URL.to_string(),
             gamma_api_url: DEFAULT_GAMMA_API_URL.to_string(),
@@ -247,7 +242,6 @@ trade:
     fn default_config_matches_requested_values() {
         let config = Config::default();
 
-        assert_eq!(config.polymarket_url, DEFAULT_POLYMARKET_URL);
         assert_eq!(config.proxy_url, DEFAULT_PROXY_URL);
         assert_eq!(config.clob_api_url, DEFAULT_CLOB_API_URL);
         assert_eq!(config.gamma_api_url, DEFAULT_GAMMA_API_URL);

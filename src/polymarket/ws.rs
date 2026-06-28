@@ -267,6 +267,7 @@ mod tests {
                 question: "question".to_string(),
                 outcome: "Yes".to_string(),
                 asset_id: "101".to_string(),
+                result: None,
             }],
         );
         let value = serde_json::json!({

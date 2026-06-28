@@ -1,11 +1,20 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MatchResult {
+    Home,
+    Draw,
+    Away,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TokenMeta {
     pub market_slug: String,
     pub question: String,
     pub outcome: String,
     pub asset_id: String,
+    pub result: Option<MatchResult>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

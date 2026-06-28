@@ -7,9 +7,9 @@
 
 ## 2. Polymarket Name Discovery
 
-- [ ] 2.1 Add fixture-driven tests for paginated active-event responses, normalized reversed team
+- [x] 2.1 Add fixture-driven tests for paginated active-event responses, normalized reversed team
   order, football 1X2 classification, no match, and ambiguous matches.
-- [ ] 2.2 Implement team-name Gamma discovery and retain exact-slug response parsing as a focused
+- [x] 2.2 Implement team-name Gamma discovery and retain exact-slug response parsing as a focused
   helper.
 
 ## 3. Polymarket Observation Streams
