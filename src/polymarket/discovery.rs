@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use anyhow::{anyhow, bail, Context, Result};
 use serde::Deserialize;
 
@@ -9,48 +11,66 @@ pub async fn discover_event(config: &Config) -> Result<DiscoveredEvent> {
     let client = reqwest::Client::builder()
         .proxy(reqwest::Proxy::all(&config.proxy_url)?)
         .build()?;
-    let mut offset = 0_u32;
-    let mut matches = Vec::new();
-
-    loop {
-        let offset_value = offset.to_string();
-        let body = client
-            .get(format!(
-                "{}/events",
-                config.gamma_api_url.trim_end_matches('/')
-            ))
-            .query(&[
-                ("active", "true"),
-                ("closed", "false"),
-                ("limit", "100"),
-                ("offset", offset_value.as_str()),
-            ])
-            .send()
-            .await?
-            .error_for_status()?
-            .text()
-            .await?;
-        let page_count = serde_json::from_str::<Vec<serde_json::Value>>(&body)
-            .context("failed to parse Gamma event page")?
-            .len();
-        matches.extend(parse_event_page(
-            &body,
-            &config.home_team,
-            &config.away_team,
-        )?);
-        if page_count < 100 {
-            break;
+    let events_url = format!("{}/events", config.gamma_api_url.trim_end_matches('/'));
+    let event = discover_event_pages(&config.home_team, &config.away_team, move |offset| {
+        let client = client.clone();
+        let events_url = events_url.clone();
+        async move {
+            Ok(client
+                .get(events_url)
+                .query(&event_query(offset))
+                .send()
+                .await?
+                .error_for_status()?
+                .text()
+                .await?)
         }
-        offset += 100;
-    }
+    })
+    .await?;
 
-    let event = select_unique_event(matches, &config.home_team, &config.away_team)?;
     println!(
         "{LOG_PREFIX} discovered event {} with {} tokens",
         event.slug,
         event.tokens.len()
     );
     Ok(event)
+}
+
+async fn discover_event_pages<F, Fut>(
+    home_team: &str,
+    away_team: &str,
+    mut fetch_page: F,
+) -> Result<DiscoveredEvent>
+where
+    F: FnMut(u32) -> Fut,
+    Fut: Future<Output = Result<String>>,
+{
+    let mut offset = 0_u32;
+    let mut matches = Vec::new();
+
+    loop {
+        let body = fetch_page(offset).await?;
+        let page_count = serde_json::from_str::<Vec<serde_json::Value>>(&body)
+            .context("failed to parse Gamma event page")?
+            .len();
+        matches.extend(parse_event_page(&body, home_team, away_team)?);
+        if page_count < 100 {
+            break;
+        }
+        offset += 100;
+    }
+
+    select_unique_event(matches, home_team, away_team)
+}
+
+fn event_query(offset: u32) -> [(&'static str, String); 5] {
+    [
+        ("active", "true".to_string()),
+        ("closed", "false".to_string()),
+        ("tag_slug", "soccer".to_string()),
+        ("limit", "100".to_string()),
+        ("offset", offset.to_string()),
+    ]
 }
 
 pub fn parse_event_response(body: &str) -> Result<DiscoveredEvent> {
@@ -119,8 +139,7 @@ fn classify_event(
     let normalized_title = normalize_words(&event.title);
     let normalized_home = normalize_words(home_team);
     let normalized_away = normalize_words(away_team);
-    if !normalized_title.contains(&normalized_home) || !normalized_title.contains(&normalized_away)
-    {
+    if !matches_team_pair(&normalized_title, &normalized_home, &normalized_away) {
         return Ok(None);
     }
 
@@ -156,6 +175,15 @@ fn classify_event(
                 asset_ids.len()
             );
         }
+        if result.is_some()
+            && outcomes
+                .iter()
+                .filter(|outcome| outcome.eq_ignore_ascii_case("yes"))
+                .count()
+                != 1
+        {
+            return Ok(None);
+        }
 
         for (outcome, asset_id) in outcomes.into_iter().zip(asset_ids) {
             let token_result = result.filter(|_| outcome.eq_ignore_ascii_case("yes"));
@@ -182,15 +210,31 @@ fn classify_question(
     normalized_away: &str,
 ) -> Option<MatchResult> {
     let question = normalize_words(question);
-    if question.contains("draw") {
-        Some(MatchResult::Draw)
-    } else if question.contains("win") && question.contains(normalized_home) {
-        Some(MatchResult::Home)
-    } else if question.contains("win") && question.contains(normalized_away) {
-        Some(MatchResult::Away)
-    } else {
-        None
+    if let Some(team) = question
+        .strip_prefix("will ")
+        .and_then(|value| value.split_once(" win"))
+        .map(|(team, _)| team)
+    {
+        return match team {
+            team if team == normalized_home => Some(MatchResult::Home),
+            team if team == normalized_away => Some(MatchResult::Away),
+            _ => None,
+        };
     }
+
+    question
+        .strip_prefix("will ")
+        .and_then(|value| value.split_once(" end in a draw"))
+        .map(|(pair, _)| pair)
+        .filter(|pair| matches_team_pair(pair, normalized_home, normalized_away))
+        .map(|_| MatchResult::Draw)
+}
+
+fn matches_team_pair(value: &str, normalized_home: &str, normalized_away: &str) -> bool {
+    value.split_once(" vs ").is_some_and(|(left, right)| {
+        (left == normalized_home && right == normalized_away)
+            || (left == normalized_away && right == normalized_home)
+    })
 }
 
 fn normalize_words(value: &str) -> String {
@@ -262,6 +306,8 @@ struct GammaMarket {
 mod tests {
     use super::*;
     use crate::polymarket::models::{MatchResult, TokenMeta};
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
     fn event_object_fixture(slug: &str, title: &str) -> String {
         format!(
@@ -327,6 +373,110 @@ mod tests {
     }
 
     #[test]
+    fn classifies_overlapping_team_names_by_exact_team_phrase() {
+        let page = r#"[{
+          "slug":"guinea-equatorial-guinea",
+          "title":"Guinea vs. Equatorial Guinea",
+          "active":true,
+          "closed":false,
+          "markets":[
+            {"slug":"guinea","question":"Will Guinea win on 2026-06-28?",
+             "outcomes":"[\"Yes\",\"No\"]","clobTokenIds":"[\"11\",\"12\"]"},
+            {"slug":"draw","question":"Will Guinea vs. Equatorial Guinea end in a draw?",
+             "outcomes":"[\"Yes\",\"No\"]","clobTokenIds":"[\"21\",\"22\"]"},
+            {"slug":"equatorial-guinea","question":"Will Equatorial Guinea win on 2026-06-28?",
+             "outcomes":"[\"Yes\",\"No\"]","clobTokenIds":"[\"31\",\"32\"]"}
+          ]
+        }]"#;
+
+        let matches = parse_event_page(page, "Guinea", "Equatorial Guinea").unwrap();
+        let yes_results: Vec<_> = matches[0]
+            .tokens
+            .iter()
+            .filter_map(|token| token.result)
+            .collect();
+
+        assert_eq!(
+            yes_results,
+            vec![MatchResult::Home, MatchResult::Draw, MatchResult::Away]
+        );
+    }
+
+    #[test]
+    fn rejects_result_market_without_a_yes_token() {
+        let page = event_fixture("missing-yes", "South Africa vs Canada", true).replace(
+            r#""outcomes":"[\"Yes\",\"No\"]","clobTokenIds":"[\"11\",\"12\"]""#,
+            r#""outcomes":"[\"No\"]","clobTokenIds":"[\"12\"]""#,
+        );
+
+        assert!(parse_event_page(&page, "South Africa", "Canada")
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn rejects_result_market_with_duplicate_yes_tokens() {
+        let page = event_fixture("duplicate-yes", "South Africa vs Canada", true).replace(
+            r#""outcomes":"[\"Yes\",\"No\"]","clobTokenIds":"[\"31\",\"32\"]""#,
+            r#""outcomes":"[\"Yes\",\"YES\",\"No\"]","clobTokenIds":"[\"31\",\"33\",\"32\"]""#,
+        );
+
+        assert!(parse_event_page(&page, "South Africa", "Canada")
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn gamma_event_query_filters_soccer_and_carries_offset() {
+        assert_eq!(
+            event_query(100),
+            [
+                ("active", "true".to_string()),
+                ("closed", "false".to_string()),
+                ("tag_slug", "soccer".to_string()),
+                ("limit", "100".to_string()),
+                ("offset", "100".to_string()),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn paginates_full_page_before_selecting_later_match() {
+        let first_page = serde_json::to_string(
+            &(0..100)
+                .map(|index| {
+                    serde_json::json!({
+                        "slug": format!("unrelated-{index}"),
+                        "title": "Japan vs Brazil",
+                        "active": true,
+                        "closed": false,
+                        "markets": []
+                    })
+                })
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let second_page =
+            event_fixture("fifwc-rsa-can-2026-06-28", "Canada vs. South Africa", true);
+        let offsets = Rc::new(RefCell::new(Vec::new()));
+        let recorded_offsets = Rc::clone(&offsets);
+
+        let event = discover_event_pages("South Africa", "Canada", move |offset| {
+            recorded_offsets.borrow_mut().push(offset);
+            std::future::ready(Ok(if offset == 0 {
+                first_page.clone()
+            } else {
+                second_page.clone()
+            }))
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(event.slug, "fifwc-rsa-can-2026-06-28");
+        assert_eq!(*offsets.borrow(), vec![0, 100]);
+    }
+
+    #[test]
     fn rejects_incomplete_and_ambiguous_1x2_candidates() {
         let incomplete = event_fixture("a", "South Africa vs Canada", false);
         assert!(parse_event_page(&incomplete, "South Africa", "Canada")
@@ -335,8 +485,8 @@ mod tests {
 
         let ambiguous = format!(
             "[{},{}]",
-            event_object_fixture("a", "South Africa vs Canada"),
-            event_object_fixture("b", "Canada vs. South Africa")
+            event_object_fixture("south-africa-canada-a", "South Africa vs Canada"),
+            event_object_fixture("canada-south-africa-b", "Canada vs. South Africa")
         );
         let error = select_unique_event(
             parse_event_page(&ambiguous, "South Africa", "Canada").unwrap(),
@@ -344,9 +494,11 @@ mod tests {
             "Canada",
         )
         .unwrap_err();
-        assert!(error.to_string().contains("ambiguous"));
-        assert!(error.to_string().contains('a'));
-        assert!(error.to_string().contains('b'));
+        assert_eq!(
+            error.to_string(),
+            "ambiguous Polymarket events for South Africa vs Canada: \
+             south-africa-canada-a, canada-south-africa-b"
+        );
     }
 
     #[test]
