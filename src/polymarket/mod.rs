@@ -5,6 +5,7 @@ pub mod live;
 pub mod logging;
 pub mod models;
 pub mod order;
+pub mod output;
 pub mod quotes;
 pub mod ws;
 

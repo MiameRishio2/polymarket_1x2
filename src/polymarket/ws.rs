@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
@@ -10,6 +12,7 @@ use url::Url;
 use crate::polymarket::logging::QuoteLogger;
 use crate::polymarket::models::{DiscoveredEvent, PriceLevel, QuoteRecord};
 use crate::polymarket::order::SCENARIO_NAME;
+use crate::polymarket::output::{self, PolymarketOddsObservation};
 use crate::polymarket::quotes::QuoteState;
 use crate::polymarket::LOG_PREFIX;
 use crate::polymarket::{config::LiveConfig, live::run_fixed_live_flow};
@@ -51,6 +54,11 @@ pub async fn run_market_stream(
     if asset_ids.is_empty() {
         bail!("no CLOB token ids discovered");
     }
+    let tokens_by_asset: HashMap<_, _> = event
+        .tokens
+        .iter()
+        .map(|token| (token.asset_id.as_str(), token))
+        .collect();
 
     let mut logger = QuoteLogger::new(&config.log_path)?;
     let mut state = QuoteState::new(event.slug.clone(), event.tokens.clone());
@@ -58,7 +66,7 @@ pub async fn run_market_stream(
     for record in
         crate::polymarket::clob::load_initial_orderbooks(&clob_client, &event, &mut state).await?
     {
-        println!(
+        eprintln!(
             "{LOG_PREFIX} {} {} {} bid={:?}/{:?} ask={:?}/{:?}",
             record.market_slug,
             record.outcome,
@@ -69,6 +77,16 @@ pub async fn run_market_stream(
             record.ask_size
         );
         logger.append(&record)?;
+        if let Some(token) = tokens_by_asset.get(record.asset_id.as_str()) {
+            if let Some(observation) = PolymarketOddsObservation::from_quote(
+                &record,
+                token,
+                &config.home_team,
+                &config.away_team,
+            ) {
+                output::write_observation(&observation)?;
+            }
+        }
     }
 
     let live_receipt = match run_fixed_live_flow(live.as_ref(), &event, &state).await {
@@ -98,12 +116,12 @@ pub async fn run_market_stream(
     let payload = Message::Text(subscription_payload(&asset_ids).to_string().into());
 
     loop {
-        println!("{LOG_PREFIX} connecting market websocket");
+        eprintln!("{LOG_PREFIX} connecting market websocket");
         match connect_ws_via_proxy(&config.market_ws_url, &config.proxy_url).await {
             Ok((ws, _response)) => {
                 let (mut write, mut read) = ws.split();
                 write.send(payload.clone()).await?;
-                println!(
+                eprintln!(
                     "{LOG_PREFIX} subscribed to {} Polymarket CLOB tokens",
                     asset_ids.len()
                 );
@@ -113,7 +131,7 @@ pub async fn run_market_stream(
                         Message::Text(text) => {
                             let value: Value = serde_json::from_str(&text)?;
                             for record in parse_market_message(&value, &mut state) {
-                                println!(
+                                eprintln!(
                                     "{LOG_PREFIX} {} {} {} bid={:?}/{:?} ask={:?}/{:?}",
                                     record.market_slug,
                                     record.outcome,
@@ -124,6 +142,16 @@ pub async fn run_market_stream(
                                     record.ask_size
                                 );
                                 logger.append(&record)?;
+                                if let Some(token) = tokens_by_asset.get(record.asset_id.as_str()) {
+                                    if let Some(observation) = PolymarketOddsObservation::from_quote(
+                                        &record,
+                                        token,
+                                        &config.home_team,
+                                        &config.away_team,
+                                    ) {
+                                        output::write_observation(&observation)?;
+                                    }
+                                }
                             }
                         }
                         Message::Ping(payload) => write.send(Message::Pong(payload)).await?,

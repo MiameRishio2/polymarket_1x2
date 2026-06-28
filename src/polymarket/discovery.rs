@@ -28,7 +28,7 @@ pub async fn discover_event(config: &Config) -> Result<DiscoveredEvent> {
     })
     .await?;
 
-    println!(
+    eprintln!(
         "{LOG_PREFIX} discovered event {} with {} tokens",
         event.slug,
         event.tokens.len()
