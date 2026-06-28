@@ -29,7 +29,9 @@ src/
     ├── discovery.rs         # Tournament/H2H embedded state parsing
     ├── logging.rs           # Append-only OddsPortal JSONL logger
     ├── models.rs            # OddsPortal match, request, and odds record structures
-    └── odds.rs              # 1X2 bookmaker odds normalization
+    ├── odds.rs              # 1X2 bookmaker odds normalization
+    ├── output.rs            # Grouped odds and score observation models and JSON line output
+    └── score.rs             # Score payload normalization and unavailable-score construction
 ```
 
 Provider-specific code must stay in separate source subtrees:
