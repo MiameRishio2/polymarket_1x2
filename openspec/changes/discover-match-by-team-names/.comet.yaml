@@ -1,12 +1,12 @@
 workflow: full
-phase: design
+phase: build
 build_mode: null
 build_pause: null
 isolation: null
 verify_mode: null
 base_ref: 8ab94dc1709da0639713af8f1dc4fa6fa445eb37
 design_doc: docs/superpowers/specs/2026-06-28-discover-match-by-team-names-design.md
-plan: null
+plan: docs/superpowers/plans/2026-06-28-discover-match-by-team-names.md
 verify_result: pending
 verification_report: null
 branch_status: pending
