@@ -9,10 +9,11 @@
 ```text
 src/
 ├── main.rs                  # Binary entry point and top-level orchestration
+├── config.rs                # Root config.yaml ownership and provider runtime construction
 ├── polymarket/              # Polymarket provider implementation
 │   ├── mod.rs
 │   ├── clob.rs              # rs-clob-client-v2 setup and order book adaptation
-│   ├── config.rs            # Typed config.yaml loading, live gate, accounts, endpoints, and defaults
+│   ├── config.rs            # Polymarket runtime types, live gate, accounts, endpoints, and defaults
 │   ├── discovery.rs         # Event slug extraction and Gamma event discovery
 │   ├── live.rs              # Proxied authenticated client, live executor, and one-shot orchestration
 │   ├── logging.rs           # Append-only quote JSONL logger
@@ -41,44 +42,52 @@ Shared code should remain absent until both providers need it. When that happens
 
 ### Binary Entry Point
 
-`src/main.rs` installs the Rustls crypto provider, runs one OddsPortal collection pass for the configured match, loads `config.yaml`, derives the Polymarket market and optional live-account configuration, discovers the configured event, and starts the Polymarket market stream.
+`src/main.rs` installs the Rustls crypto provider, loads the root runtime configuration, and starts each enabled provider as an independent local task. A Tokio `LocalSet` accommodates provider futures that are not `Send`, while a `JoinSet` supervises both collectors concurrently. The supervisor attributes every terminal result or panic to its provider and keeps waiting for remaining tasks; one provider stopping does not cancel the other.
+
+### Root Configuration
+
+`src/config.rs` owns deserialization of the repository-root `config.yaml`, provider enable flags, and conversion into provider-local runtime values. It rejects a configuration with both collectors disabled, validates the OddsPortal polling interval, and delegates Polymarket market-data and live-account construction to `src/polymarket/config.rs`.
+
+Both provider enable flags default to `true` when omitted. Live trading fails closed: `trade.enabled` defaults to `false`, and live configuration is constructed only when it is explicitly `true` and `trade.trader_mode`, `trade.account_mode`, and `trade.market_mode` are all `real`. Therefore, an older configuration containing only the three `real` modes migrates to read-only collection until `trade.enabled: true` is deliberately added.
 
 ### Polymarket Provider
 
 The Polymarket provider owns all Gamma API, CLOB REST, CLOB WebSocket, quote-state, and log-writing details. Its public surface is intentionally small: config creation, event discovery, and market stream execution.
 
-The provider exposes an executor-independent order lifecycle with a deterministic local mock for tests. It also implements the executor boundary with a live `rs-clob-client-v2` adapter. Live execution is enabled only when `trader_mode`, `account_mode`, and `market_mode` are all `real`; it selects exactly one `type: long` account and uses its configured signer, L2 credentials, signature type, funder, host, chain, and the root proxy. The client never calls SDK credential creation or derivation methods because that dependency logs L1 authentication headers on its create path.
+The provider exposes an executor-independent order lifecycle with a deterministic local mock for tests. It also implements the executor boundary with a live `rs-clob-client-v2` adapter. Live execution requires `trade.enabled: true` in addition to `trader_mode`, `account_mode`, and `market_mode` all being `real`; it selects exactly one `type: long` account and uses its configured signer, L2 credentials, signature type, funder, host, chain, and the root proxy. The client never calls SDK credential creation or derivation methods because that dependency logs L1 authentication headers on its create path.
 
 ### OddsPortal Provider
 
-The OddsPortal provider owns tournament/H2H page fetching, embedded state parsing, internal `.dat` odds request discovery, compressed payload decoding, 1X2 bookmaker odds normalization, and append-only odds logging. It is read-only and unauthenticated.
+The OddsPortal provider owns tournament/H2H page fetching, embedded state parsing, internal `.dat` odds request discovery, compressed payload decoding, 1X2 bookmaker odds normalization, and append-only odds logging. It is read-only and unauthenticated. Its polling loop uses the root-configured positive interval, reports each pass with the provider prefix, and retries on the next interval after a failed pass instead of terminating.
 
 ## Data Flow
 
 ```text
-Default config
-    |
-    v
-Polymarket URL slug extraction
-    |
-    v
-Gamma event request through proxy
-    |
-    v
-Child market token metadata
-    |
-    v
-Initial CLOB order book snapshots
-    |
-    v
-Market WebSocket subscription
-    |
-    v
-QuoteRecord normalization
-    |
-    v
-logs/polymarket_quotes.log
+config.yaml -> src/config.rs -> enabled provider runtimes
+                              |
+                LocalSet + supervised JoinSet
+                    /                     \
+                   v                       v
+       Polymarket local task        OddsPortal local task
+                   |                       |
+       URL slug extraction          configured polling loop
+                   |                       |
+       Gamma event discovery        tournament/H2H discovery
+                   |                       |
+       token metadata and           internal .dat request
+       initial CLOB snapshots               |
+                   |                decode and normalize 1X2
+       market WebSocket loop                |
+                   |                append OddsPortal JSONL
+       normalize QuoteRecord                |
+                   |                wait configured interval
+       append Polymarket JSONL               |
+                   |                  repeat after success
+       reconnect after stream          or failed pass
+       disconnect/failure
 ```
+
+Provider tasks are failure-isolated at orchestration level. A terminal Polymarket error is logged and supervised while a running OddsPortal polling task continues, and vice versa. The process exits with a combined error only after every enabled provider task has stopped.
 
 Simulation-only order data flow:
 
@@ -98,9 +107,9 @@ Validated decimal sell intent or one simulated cancellation
 Gated live order data flow:
 
 ```text
-config.yaml three-mode gate
+config.yaml trade.enabled + three-mode gate
     |
-    +-- any mode not real --> read-only collection
+    +-- enabled is false or any mode is not real --> read-only collection
     |
     v
 Unique type: long account
@@ -123,32 +132,15 @@ Immediate live GTC sell at 0.11 × 5
 Market WebSocket reconnect loop (never repeats live flow)
 ```
 
-OddsPortal data flow:
+## Runtime Output
 
-```text
-Default OddsPortal config
-    |
-    v
-Tournament page embedded state parsing
-    |
-    v
-Norway - France H2H URL and event hash
-    |
-    v
-H2H page requestPreMatch metadata
-    |
-    v
-Internal /match-event/...dat request
-    |
-    v
-Decoded odds JSON
-    |
-    v
-1X2 bookmaker odds normalization
-    |
-    v
-logs/oddsportal_odds.log
-```
+Human-readable process output uses three stable prefixes:
+
+- `[polymarket]` identifies market discovery, snapshots, WebSocket lifecycle, quotes, reconnects, and provider failures.
+- `[oddsportal]` identifies polling startup, request retries, collected odds, pass status, and provider failures.
+- `[trade]` identifies the separately gated live-order lifecycle.
+
+These prefixes apply to process output only. The provider JSONL files retain their existing record formats without prefixes.
 
 ## External Integrations
 

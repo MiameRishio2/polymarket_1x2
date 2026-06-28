@@ -50,7 +50,19 @@ strategy:
     directional_loss_lock_threshold: 0.0
     high_risk_entry_diff: 0.15
     high_risk_size_multiplier: 0.5
+polymarket:
+  enabled: true
+  url: https://polymarket.com/ja/sports/world-cup/fifwc-aus-egy-2026-07-03
+  log_path: logs/polymarket_quotes.log
+oddsportal:
+  enabled: true
+  tournament_url: https://www.oddsportal.com/football/world/world-championship-2026/
+  home_team: Australia
+  away_team: Egypt
+  log_path: logs/oddsportal_odds.log
+  poll_interval_seconds: 30
 trade:
+  enabled: false
   trader_mode: real
   account_mode: real
   market_mode: real

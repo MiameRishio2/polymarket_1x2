@@ -17,6 +17,8 @@ use crate::polymarket::quotes::QuoteState;
 use rs_clob_client_v2::types::{ApiKeyCreds, Chain, OrderType, UserLimitOrder};
 use rs_clob_client_v2::ClobClient;
 
+pub(crate) const LOG_PREFIX: &str = "[trade]";
+
 #[derive(Clone, Debug, PartialEq)]
 struct LiveLimitOrder {
     token_id: String,
@@ -214,7 +216,7 @@ fn cancellation_confirmed(value: &Value, order_id: &str) -> Result<(), ExecutorE
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::polymarket::config::FileConfig;
+    use crate::config::FileConfig;
     use crate::polymarket::models::{DiscoveredEvent, PriceLevel, TokenMeta};
     use crate::polymarket::order::MockOrderExecutor;
     use crate::polymarket::order::{LimitOrderIntent, OrderExecutor, OrderSide};
@@ -224,6 +226,11 @@ mod tests {
     use std::collections::VecDeque;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+
+    #[test]
+    fn trade_log_prefix_is_stable() {
+        assert_eq!(LOG_PREFIX, "[trade]");
+    }
 
     #[derive(Default)]
     struct FakeApi {
@@ -422,12 +429,18 @@ accounts:
     chain_id: 137
     funder: null
 trade:
+  enabled: true
   trader_mode: real
   account_mode: real
   market_mode: real
 "#;
         let file: FileConfig = serde_yaml::from_str(yaml).unwrap();
-        file.into_runtime().unwrap().1.unwrap()
+        file.into_runtime()
+            .unwrap()
+            .polymarket
+            .unwrap()
+            .live
+            .unwrap()
     }
 
     #[tokio::test]

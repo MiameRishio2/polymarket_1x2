@@ -4,6 +4,7 @@ use url::Url;
 
 use crate::polymarket::config::Config;
 use crate::polymarket::models::{DiscoveredEvent, TokenMeta};
+use crate::polymarket::LOG_PREFIX;
 
 pub fn extract_slug(input: &str) -> Result<String> {
     let url = Url::parse(input).context("invalid Polymarket URL")?;
@@ -27,7 +28,13 @@ pub async fn discover_event(config: &Config) -> Result<DiscoveredEvent> {
         .text()
         .await?;
 
-    parse_event_response(&body)
+    let event = parse_event_response(&body)?;
+    println!(
+        "{LOG_PREFIX} discovered event {} with {} tokens",
+        event.slug,
+        event.tokens.len()
+    );
+    Ok(event)
 }
 
 pub fn parse_event_response(body: &str) -> Result<DiscoveredEvent> {
@@ -113,6 +120,15 @@ mod tests {
             .unwrap();
 
         assert_eq!(slug, "fifwc-nor-fra-2026-06-26");
+    }
+
+    #[test]
+    fn extracts_supplied_localized_australia_egypt_slug() {
+        assert_eq!(
+            extract_slug("https://polymarket.com/ja/sports/world-cup/fifwc-aus-egy-2026-07-03")
+                .unwrap(),
+            "fifwc-aus-egy-2026-07-03"
+        );
     }
 
     #[test]

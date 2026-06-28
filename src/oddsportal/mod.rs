@@ -5,11 +5,51 @@ pub mod logging;
 pub mod models;
 pub mod odds;
 
+use std::future::Future;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Context, Result};
 use reqwest::header::{HeaderMap, HeaderValue};
 use tokio::time::{sleep, Duration};
+
+pub(crate) const LOG_PREFIX: &str = "[oddsportal]";
+
+pub async fn run_poll_loop(config: config::Config, interval: Duration) -> Result<()> {
+    run_poll_loop_with(config, interval, None, collect_once).await
+}
+
+async fn run_poll_loop_with<F, Fut>(
+    config: config::Config,
+    interval: Duration,
+    max_iterations: Option<usize>,
+    mut collect: F,
+) -> Result<()>
+where
+    F: FnMut(config::Config) -> Fut,
+    Fut: Future<Output = Result<Vec<models::OddsPortalRecord>>>,
+{
+    let mut completed = 0;
+    loop {
+        if max_iterations == Some(completed) {
+            return Ok(());
+        }
+
+        println!("{LOG_PREFIX} starting collection pass");
+        match collect(config.clone()).await {
+            Ok(records) => println!(
+                "{LOG_PREFIX} collection pass succeeded with {} records",
+                records.len()
+            ),
+            Err(error) => eprintln!("{LOG_PREFIX} collection pass failed: {error:#}"),
+        }
+        completed += 1;
+
+        if max_iterations == Some(completed) {
+            return Ok(());
+        }
+        sleep(interval).await;
+    }
+}
 
 pub async fn collect_once(config: config::Config) -> Result<Vec<models::OddsPortalRecord>> {
     let mut headers = HeaderMap::new();
@@ -45,7 +85,7 @@ pub async fn collect_once(config: config::Config) -> Result<Vec<models::OddsPort
     let mut logger = logging::OddsPortalLogger::new(&config.log_path)?;
     for record in &records {
         println!(
-            "oddsportal {} {} {} {}",
+            "{LOG_PREFIX} {} {} {} {}",
             record.event_name, record.bookmaker_name, record.outcome, record.decimal_odds
         );
         logger.append(record)?;
@@ -120,6 +160,9 @@ async fn get_text_with_retries(client: &reqwest::Client, url: &str, label: &str)
         }
 
         if attempt < 3 {
+            if let Some(error) = &last_error {
+                eprintln!("{LOG_PREFIX} {label} attempt {attempt} failed; retrying: {error:#}");
+            }
             sleep(Duration::from_millis(500 * attempt)).await;
         }
     }
@@ -148,6 +191,118 @@ fn http_request_url(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    #[test]
+    fn polling_status_uses_stable_provider_prefix() {
+        assert_eq!(LOG_PREFIX, "[oddsportal]");
+    }
+
+    #[tokio::test]
+    async fn polling_continues_after_failed_pass() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let observed = Arc::clone(&attempts);
+        run_poll_loop_with(
+            config::Config::default(),
+            Duration::from_millis(1),
+            Some(2),
+            move |_| {
+                observed.fetch_add(1, Ordering::SeqCst);
+                async { Err(anyhow!("expected test failure")) }
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn polling_reports_pass_start_before_awaiting_collector() {
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "oddsportal::tests::polling_output_helper",
+                "--nocapture",
+            ])
+            .env("ODDSPORTAL_POLLING_OUTPUT_HELPER", "1")
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let start = stdout
+            .find("[oddsportal] starting collection pass")
+            .expect("missing pass-start output");
+        let collector = stdout
+            .find("test collector entered")
+            .expect("missing collector output");
+
+        assert!(start < collector, "{stdout}");
+    }
+
+    #[tokio::test]
+    async fn polling_output_helper() {
+        if std::env::var_os("ODDSPORTAL_POLLING_OUTPUT_HELPER").is_none() {
+            return;
+        }
+        run_poll_loop_with(
+            config::Config::default(),
+            Duration::from_secs(60),
+            Some(1),
+            |_| async {
+                println!("test collector entered");
+                Ok(Vec::new())
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn polling_runs_first_pass_immediately() {
+        let started = tokio::time::Instant::now();
+        let (first_pass, observed) = tokio::sync::oneshot::channel();
+        let mut first_pass = Some(first_pass);
+        let task = tokio::spawn(run_poll_loop_with(
+            config::Config::default(),
+            Duration::from_secs(30),
+            Some(1),
+            move |_| {
+                first_pass.take().unwrap().send(()).unwrap();
+                async { Ok(Vec::new()) }
+            },
+        ));
+
+        observed.await.unwrap();
+        task.await.unwrap().unwrap();
+        assert_eq!(tokio::time::Instant::now() - started, Duration::ZERO);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn polling_waits_then_runs_again_after_success() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let observed = Arc::clone(&attempts);
+        let task = tokio::spawn(run_poll_loop_with(
+            config::Config::default(),
+            Duration::from_secs(30),
+            Some(2),
+            move |_| {
+                observed.fetch_add(1, Ordering::SeqCst);
+                async { Ok(Vec::new()) }
+            },
+        ));
+
+        tokio::task::yield_now().await;
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+        tokio::time::advance(Duration::from_secs(29)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+        tokio::time::advance(Duration::from_secs(1)).await;
+        task.await.unwrap().unwrap();
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    }
 
     #[test]
     fn cache_busted_url_appends_timestamp_to_open_cache_param() {

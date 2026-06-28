@@ -1,0 +1,17 @@
+{
+  "change": "configure-trade-and-concurrent-provider-logging",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "0e47804fd7b34825d87781499a23abda525b5165a05047589f3fd06e2f1b020e",
+  "files": [
+    { "path": "openspec/changes/configure-trade-and-concurrent-provider-logging/proposal.md", "sha256": "d32be6564773ec67a549d7ef5c569b49695beec5e44eafc35bb42c67fab0b3ce" },
+    { "path": "openspec/changes/configure-trade-and-concurrent-provider-logging/design.md", "sha256": "9e385160f8bae60c0c58cdfbcd2527e929c609ed7a28674c9e88124dc1d112d9" },
+    { "path": "openspec/changes/configure-trade-and-concurrent-provider-logging/tasks.md", "sha256": "576a83f679f2330d318d3eed445cb050ff9d0ae3de9f503dd1a81d4ddd1392c1" },
+    { "path": "openspec/changes/configure-trade-and-concurrent-provider-logging/specs/oddsportal-js-odds/spec.md", "sha256": "a5bdc4edd221aeb970f4fff16fdc8dfc445aff276265506a8f92b3d2023cb91a" },
+    { "path": "openspec/changes/configure-trade-and-concurrent-provider-logging/specs/polymarket-live-trading/spec.md", "sha256": "991bfc80c403312788f527621db9089d5ead8f79c063bb3577e615788866d138" },
+    { "path": "openspec/changes/configure-trade-and-concurrent-provider-logging/specs/polymarket-ws-quotes/spec.md", "sha256": "10a09f32707e17b5c624f19696546bf205554002131ac5d8747d63f73abbcad3" },
+    { "path": "openspec/changes/configure-trade-and-concurrent-provider-logging/specs/provider-runtime-orchestration/spec.md", "sha256": "1e76279cea3d2951c1c624968a1eb6121894f22cec88f5e59cca45db096ad1c9" }
+  ]
+}
