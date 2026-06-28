@@ -17,9 +17,9 @@
 - [x] 3.1 Add serialization and filtering tests for home/draw/away Yes-token odds JSON records.
 - [x] 3.2 Emit initial and changed Yes-token CLOB observations as JSON stdout while preserving
   quote JSONL logging.
-- [ ] 3.3 Add fixture and protocol tests for Sports WebSocket score parsing, slug filtering,
+- [x] 3.3 Add fixture and protocol tests for Sports WebSocket score parsing, slug filtering,
   heartbeat response, and reconnect behavior.
-- [ ] 3.4 Implement the provider-local Sports WebSocket score stream independently of the CLOB
+- [x] 3.4 Implement the provider-local Sports WebSocket score stream independently of the CLOB
   stream.
 
 ## 4. OddsPortal Dual Polling

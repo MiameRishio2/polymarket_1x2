@@ -7,6 +7,24 @@ use serde::Serialize;
 use crate::polymarket::models::{MatchResult, QuoteRecord, TokenMeta};
 
 #[derive(Debug, Serialize)]
+pub struct PolymarketScoreObservation {
+    pub provider: &'static str,
+    #[serde(rename = "type")]
+    pub record_type: &'static str,
+    pub received_at: String,
+    pub source_updated_at: Option<String>,
+    pub event_slug: String,
+    pub home_team: String,
+    pub away_team: String,
+    pub score: Option<String>,
+    pub status: Option<String>,
+    pub period: Option<String>,
+    pub elapsed: Option<String>,
+    pub live: Option<bool>,
+    pub ended: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
 pub struct PolymarketOddsObservation {
     pub provider: &'static str,
     #[serde(rename = "type")]

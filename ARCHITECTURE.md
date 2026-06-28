@@ -20,6 +20,7 @@ src/
 │   ├── models.rs            # Polymarket quote and token data structures
 │   ├── order.rs             # Abstract executor and read-only order lifecycle simulation
 │   ├── quotes.rs            # In-memory latest bid/ask state
+│   ├── sports.rs            # Sports score WebSocket parsing and reconnect loop
 │   └── ws.rs                # Market WebSocket subscription and message parsing
 └── oddsportal/              # OddsPortal provider implementation
     ├── mod.rs
@@ -52,7 +53,9 @@ Both provider enable flags default to `true` when omitted. Live trading fails cl
 
 ### Polymarket Provider
 
-The Polymarket provider owns all Gamma API, CLOB REST, CLOB WebSocket, quote-state, and log-writing details. Its public surface is intentionally small: config creation, event discovery, and market stream execution.
+The Polymarket provider owns all Gamma API, CLOB REST, CLOB WebSocket, Sports WebSocket,
+quote-state, and log-writing details. Its public surface is intentionally small: config creation
+and dual-stream execution after one event discovery pass.
 
 The provider exposes an executor-independent order lifecycle with a deterministic local mock for tests. It also implements the executor boundary with a live `rs-clob-client-v2` adapter. Live execution requires `trade.enabled: true` in addition to `trader_mode`, `account_mode`, and `market_mode` all being `real`; it selects exactly one `type: long` account and uses its configured signer, L2 credentials, signature type, funder, host, chain, and the root proxy. The client never calls SDK credential creation or derivation methods because that dependency logs L1 authentication headers on its create path.
 
@@ -77,14 +80,15 @@ config.yaml -> src/config.rs -> enabled provider runtimes
        token metadata and           internal .dat request
        initial CLOB snapshots               |
                    |                decode and normalize 1X2
-       market WebSocket loop                |
-                   |                append OddsPortal JSONL
-       normalize QuoteRecord                |
-                   |                wait configured interval
-       append Polymarket JSONL               |
-                   |                  repeat after success
-       reconnect after stream          or failed pass
-       disconnect/failure
+          +--------+--------+               |
+          |                 |       append OddsPortal JSONL
+    market WebSocket  Sports WebSocket      |
+          |                 |       wait configured interval
+    quote records      score records        |
+          |                 |         repeat after success
+          +--------+--------+            or failed pass
+                   |
+       reconnect each disconnected stream
 ```
 
 Provider tasks are failure-isolated at orchestration level. A terminal Polymarket error is logged and supervised while a running OddsPortal polling task continues, and vice versa. The process exits with a combined error only after every enabled provider task has stopped.

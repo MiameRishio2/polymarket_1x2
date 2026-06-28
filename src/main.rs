@@ -101,10 +101,7 @@ async fn main() -> anyhow::Result<()> {
                     &mut tasks,
                     &mut providers,
                     Provider::Polymarket,
-                    async move {
-                        let event = polymarket::discovery::discover_event(&runtime.config).await?;
-                        polymarket::ws::run_market_stream(runtime.config, runtime.live, event).await
-                    },
+                    polymarket::run(runtime.config, runtime.live),
                 );
             }
 

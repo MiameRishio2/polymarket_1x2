@@ -239,7 +239,7 @@ fn string_field(value: &Value, names: &[&str]) -> Option<String> {
     })
 }
 
-async fn connect_ws_via_proxy(
+pub(crate) async fn connect_ws_via_proxy(
     ws_url: &str,
     proxy_url: &str,
 ) -> Result<(
