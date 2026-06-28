@@ -13,6 +13,9 @@ URL.
 The committed proxy placeholder is intentionally unchanged; operators must provide a reachable
 proxy in their deployment configuration.
 
+The delta specs update only target-specific acceptance examples in the existing Polymarket and
+OddsPortal capabilities; no provider behavior or interface changes.
+
 ## Risks
 
 - A wrong team order would select another event or fail discovery. The configuration test asserts

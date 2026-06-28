@@ -11,6 +11,9 @@ canonical_spec: openspec
 Change the existing provider target values without changing provider interfaces, runtime
 orchestration, parsing, logging, JSONL schemas, or trading behavior.
 
+The existing target-specific acceptance examples in `polymarket-ws-quotes` and
+`oddsportal-js-odds` are updated to the same Jordan–Argentina values.
+
 ## Configuration
 
 The committed runtime target is:

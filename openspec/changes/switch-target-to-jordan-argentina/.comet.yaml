@@ -7,7 +7,7 @@ verify_mode: full
 base_ref: 18cfdf2c4a1db6c79c6d243170b605b7d8a8bc6d
 design_doc: docs/superpowers/specs/2026-06-28-switch-target-to-jordan-argentina-design.md
 plan: docs/superpowers/plans/2026-06-28-switch-target-to-jordan-argentina.md
-verify_result: pending
+verify_result: fail
 verification_report: null
 branch_status: pending
 created_at: 2026-06-28

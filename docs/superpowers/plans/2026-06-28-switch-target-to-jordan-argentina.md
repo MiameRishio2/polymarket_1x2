@@ -150,3 +150,39 @@ Restore `proxy: "YOUR_PROXY_URL"` and verify `git diff --exit-code HEAD -- confi
 - [x] **Step 5: Commit verification state**
 
 Commit: `982fede tweak: verify Jordan Argentina collectors`.
+
+---
+
+### Task 3: Synchronize Target-Specific Acceptance Scenarios
+
+**Files:**
+- Create: `openspec/changes/switch-target-to-jordan-argentina/specs/polymarket-ws-quotes/spec.md`
+- Create: `openspec/changes/switch-target-to-jordan-argentina/specs/oddsportal-js-odds/spec.md`
+- Modify: `openspec/changes/switch-target-to-jordan-argentina/proposal.md`
+- Modify: `openspec/changes/switch-target-to-jordan-argentina/design.md`
+- Modify: `openspec/changes/switch-target-to-jordan-argentina/tasks.md`
+
+**Interfaces:**
+- Modifies no Rust interface.
+- Produces archive-ready delta specs for existing provider-target requirements.
+
+- [x] **Step 1: Copy complete affected requirement blocks**
+
+Copy the full `Provider-local implementation` and `Configurable Polymarket collection target`
+requirements, and the full `Configurable OddsPortal collection target` requirement, from the
+main specs into delta specs under `## MODIFIED Requirements`.
+
+- [x] **Step 2: Replace only target-specific scenario values**
+
+Use the exact Jordan–Argentina URL, slug, home team, away team, and event display order. Preserve
+all non-target requirement text and scenarios.
+
+- [x] **Step 3: Run strict OpenSpec validation**
+
+Run:
+
+```bash
+openspec validate switch-target-to-jordan-argentina --strict
+```
+
+Expected: PASS with both modified capability deltas parsed.

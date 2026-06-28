@@ -6,3 +6,7 @@
 ## 2. Runtime Verification
 
 - [x] 2.1 Build and run a bounded trading-disabled smoke test with a reachable temporary proxy, then confirm both provider logs and JSONL output.
+
+## 3. Specification Synchronization
+
+- [x] 3.1 Update Polymarket and OddsPortal target-specific acceptance scenarios and pass strict OpenSpec validation.

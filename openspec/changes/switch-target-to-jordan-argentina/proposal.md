@@ -21,7 +21,9 @@ None.
 
 ### Modified Capabilities
 
-None. This change selects different values for existing provider-target configuration.
+- `polymarket-ws-quotes`: Update the configured localized-event acceptance scenario to the
+  Jordan–Argentina URL and slug.
+- `oddsportal-js-odds`: Update the configured match acceptance scenario to Jordan–Argentina.
 
 ## Impact
 
