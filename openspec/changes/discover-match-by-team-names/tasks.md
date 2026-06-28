@@ -1,8 +1,8 @@
 ## 1. Shared Match Configuration
 
-- [ ] 1.1 Add failing configuration tests for one validated shared team pair, provider injection,
+- [x] 1.1 Add failing configuration tests for one validated shared team pair, provider injection,
   and the committed South Africa/Canada one-second target.
-- [ ] 1.2 Implement root match configuration, remove duplicated provider target ownership, and
+- [x] 1.2 Implement root match configuration, remove duplicated provider target ownership, and
   update `config.yaml` without weakening live-trading gates.
 
 ## 2. Polymarket Name Discovery

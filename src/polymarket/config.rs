@@ -11,28 +11,36 @@ pub const DEFAULT_CLOB_API_URL: &str = "https://clob.polymarket.com";
 pub const DEFAULT_GAMMA_API_URL: &str = "https://gamma-api.polymarket.com";
 pub const DEFAULT_GAMMA_EVENT_BASE: &str = "https://gamma-api.polymarket.com/events/slug/";
 pub const DEFAULT_MARKET_WS_URL: &str = "wss://ws-subscriptions-clob.polymarket.com/ws/market";
+pub const DEFAULT_SPORTS_WS_URL: &str = "wss://sports-api.polymarket.com/ws";
 pub const DEFAULT_LOG_PATH: &str = "logs/polymarket_quotes.log";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Config {
+    pub home_team: String,
+    pub away_team: String,
+    // Temporary compatibility bridge until team-name discovery replaces exact-slug discovery.
     pub polymarket_url: String,
     pub proxy_url: String,
     pub clob_api_url: String,
     pub gamma_api_url: String,
     pub gamma_event_base: String,
     pub market_ws_url: String,
+    pub sports_ws_url: String,
     pub log_path: PathBuf,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
+            home_team: String::new(),
+            away_team: String::new(),
             polymarket_url: DEFAULT_POLYMARKET_URL.to_string(),
             proxy_url: DEFAULT_PROXY_URL.to_string(),
             clob_api_url: DEFAULT_CLOB_API_URL.to_string(),
             gamma_api_url: DEFAULT_GAMMA_API_URL.to_string(),
             gamma_event_base: DEFAULT_GAMMA_EVENT_BASE.to_string(),
             market_ws_url: DEFAULT_MARKET_WS_URL.to_string(),
+            sports_ws_url: DEFAULT_SPORTS_WS_URL.to_string(),
             log_path: PathBuf::from(DEFAULT_LOG_PATH),
         }
     }
@@ -114,13 +122,15 @@ pub struct RuntimeInput {
     pub chain_id: u64,
     pub accounts: Vec<AccountConfig>,
     pub trade: TradeConfig,
-    pub polymarket_url: String,
+    pub home_team: String,
+    pub away_team: String,
     pub log_path: PathBuf,
 }
 
 pub fn build_runtime(input: RuntimeInput) -> Result<(Config, Option<LiveConfig>)> {
     let market = Config {
-        polymarket_url: input.polymarket_url,
+        home_team: input.home_team,
+        away_team: input.away_team,
         proxy_url: input.proxy_url.clone(),
         clob_api_url: input.clob_host.clone(),
         gamma_api_url: input.gamma_host.clone(),
@@ -204,7 +214,8 @@ mod tests {
             chain_id: fixture.chain_id,
             accounts: fixture.accounts,
             trade: fixture.trade,
-            polymarket_url: defaults.polymarket_url,
+            home_team: "Australia".to_string(),
+            away_team: "Egypt".to_string(),
             log_path: defaults.log_path,
         }
     }
@@ -242,6 +253,7 @@ trade:
         assert_eq!(config.gamma_api_url, DEFAULT_GAMMA_API_URL);
         assert_eq!(config.gamma_event_base, DEFAULT_GAMMA_EVENT_BASE);
         assert_eq!(config.market_ws_url, DEFAULT_MARKET_WS_URL);
+        assert_eq!(config.sports_ws_url, DEFAULT_SPORTS_WS_URL);
         assert_eq!(config.log_path, PathBuf::from(DEFAULT_LOG_PATH));
     }
 
