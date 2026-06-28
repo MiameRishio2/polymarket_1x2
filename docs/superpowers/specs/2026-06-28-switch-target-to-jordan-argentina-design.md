@@ -2,6 +2,8 @@
 comet_change: switch-target-to-jordan-argentina
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-28-switch-target-to-jordan-argentina
+status: final
 ---
 
 # Switch Provider Target to Jordan–Argentina

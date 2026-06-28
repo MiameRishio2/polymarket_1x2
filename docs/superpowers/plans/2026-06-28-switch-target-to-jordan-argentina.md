@@ -2,6 +2,7 @@
 change: switch-target-to-jordan-argentina
 design-doc: docs/superpowers/specs/2026-06-28-switch-target-to-jordan-argentina-design.md
 base-ref: 18cfdf2c4a1db6c79c6d243170b605b7d8a8bc6d
+archived-with: 2026-06-28-switch-target-to-jordan-argentina
 ---
 
 # Switch Provider Target to Jordan–Argentina Implementation Plan
@@ -26,6 +27,7 @@ trade behavior changes.
 - Provider log paths, polling cadence, and committed proxy placeholder remain unchanged.
 - No credentials, authenticated writes, interfaces, dependencies, or JSONL schemas change.
 
+archived-with: 2026-06-28-switch-target-to-jordan-argentina
 ---
 
 ### Task 1: Lock the Committed Provider Target
@@ -104,6 +106,7 @@ Observed: both focused tests and all 70 tests passed.
 
 Commit: `0dfab45 tweak: target Jordan Argentina providers`.
 
+archived-with: 2026-06-28-switch-target-to-jordan-argentina
 ---
 
 ### Task 2: Verify the Live Read-Only Runtime
@@ -151,6 +154,7 @@ Restore `proxy: "YOUR_PROXY_URL"` and verify `git diff --exit-code HEAD -- confi
 
 Commit: `982fede tweak: verify Jordan Argentina collectors`.
 
+archived-with: 2026-06-28-switch-target-to-jordan-argentina
 ---
 
 ### Task 3: Synchronize Target-Specific Acceptance Scenarios

@@ -68,6 +68,16 @@ Bounded read-only smoke evidence:
 - No authenticated placement or cancellation request was issued.
 - No new `unsafe` code was introduced.
 
+## Archive Integrity
+
+The archive helper initially replaced each main spec with its partial `MODIFIED` delta. Before
+commit, the two main specs were restored from their complete pre-archive versions and only the
+Jordan–Argentina scenario lines were changed. The final main-spec diffs preserve every unrelated
+requirement, and both affected specs pass targeted strict validation:
+
+- `openspec validate oddsportal-js-odds --type spec --strict --no-interactive`
+- `openspec validate polymarket-ws-quotes --type spec --strict --no-interactive`
+
 ## Issues
 
 ### CRITICAL

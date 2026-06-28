@@ -11,7 +11,7 @@ orchestration layer SHALL pass the configured Polymarket event URL and quote-log
 provider-local workflow and SHALL start it concurrently with enabled OddsPortal collection.
 
 #### Scenario: Running the executable with both providers configured
-- **WHEN** the executable starts with both providers enabled and the Australia–Egypt Polymarket event URL configured
+- **WHEN** the executable starts with both providers enabled and the Jordan–Argentina Polymarket event URL configured
 - **THEN** it uses modules under `src/polymarket/` to discover that event, load and log initial quotes, and subscribe to its tokens without waiting for OddsPortal collection to finish
 
 ### Requirement: Read-only latest quote access
@@ -31,8 +31,8 @@ the `polymarket` section of `config.yaml`, with existing provider defaults when 
 absent.
 
 #### Scenario: Localized event URL is configured
-- **WHEN** `polymarket.url` is `https://polymarket.com/ja/sports/world-cup/fifwc-aus-egy-2026-07-03`
-- **THEN** discovery extracts `fifwc-aus-egy-2026-07-03` and requests that Gamma event
+- **WHEN** `polymarket.url` is `https://polymarket.com/ja/sports/world-cup/fifwc-jor-arg-2026-06-27`
+- **THEN** discovery extracts `fifwc-jor-arg-2026-06-27` and requests that Gamma event
 
 #### Scenario: Quote log path is configured
 - **WHEN** `polymarket.log_path` names a writable local path
