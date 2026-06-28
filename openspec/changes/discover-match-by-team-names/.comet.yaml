@@ -1,0 +1,17 @@
+workflow: full
+phase: design
+build_mode: null
+build_pause: null
+isolation: null
+verify_mode: null
+base_ref: 8ab94dc1709da0639713af8f1dc4fa6fa445eb37
+design_doc: docs/superpowers/specs/2026-06-28-discover-match-by-team-names-design.md
+plan: null
+verify_result: pending
+verification_report: null
+branch_status: pending
+created_at: 2026-06-28
+verified_at: null
+archived: false
+handoff_context: openspec/changes/discover-match-by-team-names/.comet/handoff/design-context.json
+handoff_hash: 619bdbf9f0490a7702c8d45f04498e3429cff8f3313f9181b9540127d1a5eed1

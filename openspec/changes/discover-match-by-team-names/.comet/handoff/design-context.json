@@ -1,0 +1,16 @@
+{
+  "change": "discover-match-by-team-names",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "619bdbf9f0490a7702c8d45f04498e3429cff8f3313f9181b9540127d1a5eed1",
+  "files": [
+    { "path": "openspec/changes/discover-match-by-team-names/proposal.md", "sha256": "499df3981084e46fb24e4daac7715b9af7f78dd2a5166d45b735ab82b8d73225" },
+    { "path": "openspec/changes/discover-match-by-team-names/design.md", "sha256": "50a9f9515d41dd63303188651ef365d13c16b1c0bca3464f4c12d840ba58eff9" },
+    { "path": "openspec/changes/discover-match-by-team-names/tasks.md", "sha256": "dd226128ffcf93a971468f7d6d57e941d51b4038262458c686642a7fd6f3583f" },
+    { "path": "openspec/changes/discover-match-by-team-names/specs/oddsportal-js-odds/spec.md", "sha256": "1d0e1cebe8d87e6fddd94c592097e7b4d95a730656d79381cc6dc1b179e8c93d" },
+    { "path": "openspec/changes/discover-match-by-team-names/specs/polymarket-ws-quotes/spec.md", "sha256": "432878dd21c401cd01d9cb9c21e147ec8062babb274092e090d3b8ec9a060628" },
+    { "path": "openspec/changes/discover-match-by-team-names/specs/provider-runtime-orchestration/spec.md", "sha256": "ad6df683d2750e7c67e9e718fdf3018cfccd50a0a71464d150c3569a9734300a" }
+  ]
+}
