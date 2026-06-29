@@ -2,7 +2,7 @@
 
 ## Project Identity
 
-`polymarket-1x2` is a Rust command-line collector for Polymarket 1X2 quote data and OddsPortal football bookmaker odds. It discovers tokens for a configured Polymarket event, subscribes to market WebSocket updates, normalizes latest bid and ask values, collects configured OddsPortal 1X2 prices through the site's embedded JavaScript state and internal odds data response, and appends JSON lines to local log files.
+`polymarket-1x2` is a Rust command-line collector for Polymarket 1X2 quote data and OddsPortal football bookmaker odds and scores. It discovers one configured team pair independently at both providers, subscribes to Polymarket market and sports WebSockets, and polls OddsPortal odds and score resources. Normalized observations are written as JSON Lines to stdout; provider-specific diagnostics are written as text to stderr. Existing quote records are also appended to provider JSONL files.
 
 ## Source Tree
 
@@ -19,8 +19,9 @@ src/
 │   ├── logging.rs           # Append-only quote JSONL logger
 │   ├── models.rs            # Polymarket quote and token data structures
 │   ├── order.rs             # Abstract executor and read-only order lifecycle simulation
+│   ├── output.rs            # Polymarket stdout observation models
 │   ├── quotes.rs            # In-memory latest bid/ask state
-│   ├── sports.rs            # Sports score WebSocket parsing and reconnect loop
+│   ├── sports.rs            # Public sports-score WebSocket
 │   └── ws.rs                # Market WebSocket subscription and message parsing
 └── oddsportal/              # OddsPortal provider implementation
     ├── mod.rs
@@ -51,46 +52,65 @@ Shared code should remain absent until both providers need it. When that happens
 
 `src/config.rs` owns deserialization of the repository-root `config.yaml`, provider enable flags, and conversion into provider-local runtime values. It rejects a configuration with both collectors disabled, validates the OddsPortal polling interval, and delegates Polymarket market-data and live-account construction to `src/polymarket/config.rs`.
 
+The required root `match.home_team` and `match.away_team` pair is validated once and injected into both provider runtimes. It replaces provider-specific target ownership: Polymarket discovers a unique active football 1X2 event by normalized team names, while OddsPortal discovers the same configured pair on its tournament page.
+
 Both provider enable flags default to `true` when omitted. Live trading fails closed: `trade.enabled` defaults to `false`, and live configuration is constructed only when it is explicitly `true` and `trade.trader_mode`, `trade.account_mode`, and `trade.market_mode` are all `real`. Therefore, an older configuration containing only the three `real` modes migrates to read-only collection until `trade.enabled: true` is deliberately added.
 
 ### Polymarket Provider
 
-The Polymarket provider owns all Gamma API, CLOB REST, CLOB WebSocket, Sports WebSocket,
+The Polymarket provider owns all Gamma API, CLOB REST, CLOB WebSocket, public Sports WebSocket,
 quote-state, and log-writing details. Its public surface is intentionally small: config creation
-and dual-stream execution after one event discovery pass.
+and dual-stream execution after one team-name event discovery pass. The market and sports
+WebSockets reconnect independently and emit `polymarket_odds` and `polymarket_score`
+observations respectively.
 
 The provider exposes an executor-independent order lifecycle with a deterministic local mock for tests. It also implements the executor boundary with a live `rs-clob-client-v2` adapter. Live execution requires `trade.enabled: true` in addition to `trader_mode`, `account_mode`, and `market_mode` all being `real`; it selects exactly one `type: long` account and uses its configured signer, L2 credentials, signature type, funder, host, chain, and the root proxy. The client never calls SDK credential creation or derivation methods because that dependency logs L1 authentication headers on its create path.
 
 ### OddsPortal Provider
 
-The OddsPortal provider owns tournament/H2H page fetching, embedded state parsing, internal `.dat` odds request discovery, compressed payload decoding, 1X2 bookmaker odds normalization, and append-only odds logging. It is read-only and unauthenticated. Its polling loop uses the root-configured positive interval, reports each pass with the provider prefix, and retries on the next interval after a failed pass instead of terminating.
+The OddsPortal provider owns tournament/H2H page fetching, embedded state parsing, independent
+odds and score request discovery, compressed payload decoding, 1X2 bookmaker odds normalization,
+score normalization, and append-only odds logging. It is read-only and unauthenticated. Each
+non-overlapping polling cycle starts the odds and score HTTP requests concurrently, preserves
+either successful result when the other request fails, and waits for the next configured tick
+after the cycle finishes. With the committed one-second interval this is two requests per
+non-overlapping one-second cycle. OddsPortal advertises an approximately 15-second upstream
+refresh, so one-second requests cannot force new source data and may be rate-limited.
 
 ## Data Flow
 
 ```text
-config.yaml -> src/config.rs -> enabled provider runtimes
-                              |
-                LocalSet + supervised JoinSet
-                    /                     \
-                   v                       v
-       Polymarket local task        OddsPortal local task
-                   |                       |
-       URL slug extraction          configured polling loop
-                   |                       |
-       Gamma event discovery        tournament/H2H discovery
-                   |                       |
-       token metadata and           internal .dat request
-       initial CLOB snapshots               |
-                   |                decode and normalize 1X2
-          +--------+--------+               |
-          |                 |       append OddsPortal JSONL
-    market WebSocket  Sports WebSocket      |
-          |                 |       wait configured interval
-    quote records      score records        |
-          |                 |         repeat after success
-          +--------+--------+            or failed pass
-                   |
-       reconnect each disconnected stream
+config.yaml match.home_team + match.away_team
+                        |
+                  src/config.rs
+                        |
+        inject the same pair into both providers
+                  /                     \
+                 v                       v
+     Polymarket local task        OddsPortal local task
+                 |                       |
+     Gamma team-name search       tournament/H2H discovery
+                 |                       |
+       one football event         odds URL + score URL
+                 |                       |
+        +--------+--------+       one-second cycle starts
+        |                 |        both HTTP requests
+        v                 v          concurrently
+ market WebSocket   Sports WebSocket    /       \
+        |                 |            v         v
+ initial/changed      matching       odds      score
+ Yes-token odds       event score      \         /
+        |                 |        finish without overlap
+        +--------+--------+                 |
+                 |                     next tick
+                 v                         |
+       stdout observation JSONL <----------+
+                 |
+       polymarket_odds / polymarket_score /
+       oddsportal_odds / oddsportal_score
+
+All lifecycle, retry, discovery, reconnect, and failure diagnostics
+go to stderr as provider-prefixed text.
 ```
 
 Provider tasks are failure-isolated at orchestration level. A terminal Polymarket error is logged and supervised while a running OddsPortal polling task continues, and vice versa. The process exits with a combined error only after every enabled provider task has stopped.
@@ -140,18 +160,25 @@ Market WebSocket reconnect loop (never repeats live flow)
 
 ## Runtime Output
 
-Human-readable process output uses three stable prefixes:
+Stdout is reserved for newline-delimited observation JSON objects. The four record types are
+`polymarket_odds`, `polymarket_score`, `oddsportal_odds`, and `oddsportal_score`. Consumers can
+distinguish receipt time from an optional provider timestamp through `received_at` and
+`source_updated_at`. A pre-match or missing OddsPortal score resource produces an
+`oddsportal_score` object with `available: false`; the Sports WebSocket may emit no
+`polymarket_score` record before a match is live.
+
+Human-readable diagnostics go to stderr and use three stable prefixes:
 
 - `[polymarket]` identifies market discovery, snapshots, WebSocket lifecycle, quotes, reconnects, and provider failures.
 - `[oddsportal]` identifies polling startup, request retries, collected odds, pass status, and provider failures.
 - `[trade]` identifies the separately gated live-order lifecycle.
 
-These prefixes apply to process output only. The provider JSONL files retain their existing record formats without prefixes.
+These prefixes never appear in stdout observation JSONL. The provider quote JSONL files retain
+their existing record formats without prefixes and do not duplicate the score streams.
 
 ## External Integrations
 
-- Polymarket website URL: source for the configured event slug.
-- Polymarket Gamma API: event and child market metadata.
+- Polymarket Gamma API: paginated active-event discovery by configured team names and child market metadata.
 - Polymarket CLOB API through `rs-clob-client-v2`: initial order book snapshots.
 - Polymarket authenticated CLOB API through the same proxied client: gated GTC placement and single-order cancellation.
 - Polymarket market WebSocket: live market updates.

@@ -50,17 +50,29 @@ tail -f logs/polymarket_quotes.log
 tail -f logs/oddsportal_odds.log
 ```
 
-The first command shows both collectors' human-readable lifecycle output.
-`[polymarket]` labels Polymarket discovery, quote, WebSocket, reconnect, and
-terminal messages; `[oddsportal]` labels OddsPortal polling, retry, odds, and
-terminal messages; `[trade]` is reserved for the separately gated live-order
-lifecycle. A terminal error from one provider can appear while the other
-provider continues because enabled collectors are supervised independently.
+Because `scripts/start.sh` intentionally redirects both streams to this one
+file, the first command shows a mixture of machine-readable observation JSONL
+from stdout and human-readable diagnostics from stderr. `[polymarket]` labels
+Polymarket discovery, WebSocket, reconnect, and terminal diagnostics;
+`[oddsportal]` labels OddsPortal polling, retry, and terminal diagnostics;
+`[trade]` is reserved for the separately gated live-order lifecycle. A
+terminal error from one provider can appear while the other provider
+continues because enabled collectors are supervised independently.
 
-The other two commands follow the default provider JSONL files. Their paths
-can be changed with `polymarket.log_path` and `oddsportal.log_path`.
-Application JSONL records remain separate from process output and do not
-include the process-output prefixes.
+The other two commands follow the default detailed quote JSONL files. Their
+paths can be changed with `polymarket.log_path` and `oddsportal.log_path`.
+They retain their existing quote record formats and do not contain score
+observations. For a clean machine-readable stream in a foreground run, keep
+stdout and stderr separate:
+
+```bash
+cargo run >observations.jsonl 2>diagnostics.log
+```
+
+`observations.jsonl` then contains only the four supported observation types:
+`polymarket_odds`, `polymarket_score`, `oddsportal_odds`, and
+`oddsportal_score`. Diagnostics retain their provider prefixes only in
+`diagnostics.log`.
 
 ## Stop
 
@@ -88,6 +100,10 @@ The process starts with the repository root as its working directory and reads
 - Review `polymarket.enabled`, `oddsportal.enabled`, and the positive
   `oddsportal.poll_interval_seconds`. Enabled providers run concurrently, and
   at least one provider must be enabled.
+- The committed one-second OddsPortal interval starts one odds request and one
+  score request concurrently in each non-overlapping cycle. OddsPortal
+  advertises an approximately 15-second upstream refresh, so repeated values
+  are expected and aggressive polling may be rate-limited.
 - Keep private keys and API credentials out of source control, shell history,
   process arguments, logs, fixtures, and test output.
 

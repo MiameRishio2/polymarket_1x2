@@ -36,7 +36,7 @@
 
 - [x] 5.1 Route machine-readable observations to stdout and provider-prefixed diagnostics to
   stderr, with focused process-output tests.
-- [ ] 5.2 Synchronize `ARCHITECTURE.md`, configuration examples, and user-facing runtime/output
+- [x] 5.2 Synchronize `ARCHITECTURE.md`, configuration examples, and user-facing runtime/output
   documentation with name discovery, dual score feeds, and output schemas.
-- [ ] 5.3 Run formatting, focused tests, full `cargo test`, strict OpenSpec validation, and a
+- [x] 5.3 Run formatting, focused tests, full `cargo test`, strict OpenSpec validation, and a
   bounded trading-disabled South Africa/Canada smoke test.
