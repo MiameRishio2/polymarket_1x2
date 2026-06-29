@@ -14,7 +14,7 @@ src/
 │   ├── mod.rs
 │   ├── clob.rs              # rs-clob-client-v2 setup and order book adaptation
 │   ├── config.rs            # Polymarket runtime types, live gate, accounts, endpoints, and defaults
-│   ├── discovery.rs         # Event slug extraction and Gamma event discovery
+│   ├── discovery.rs         # Gamma team-name event discovery and 1X2 classification
 │   ├── live.rs              # Proxied authenticated client, live executor, and one-shot orchestration
 │   ├── logging.rs           # Append-only quote JSONL logger
 │   ├── models.rs            # Polymarket quote and token data structures

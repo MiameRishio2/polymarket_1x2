@@ -41,6 +41,18 @@ pub fn parse_market_message(value: &Value, state: &mut QuoteState) -> Vec<QuoteR
     }
 }
 
+enum MarketFrameControl {
+    Records(Vec<QuoteRecord>),
+    Reconnect(anyhow::Error),
+}
+
+fn parse_market_text(text: &str, state: &mut QuoteState) -> MarketFrameControl {
+    match serde_json::from_str::<Value>(text) {
+        Ok(value) => MarketFrameControl::Records(parse_market_message(&value, state)),
+        Err(error) => MarketFrameControl::Reconnect(error.into()),
+    }
+}
+
 pub async fn run_market_stream(
     config: crate::polymarket::config::Config,
     live: Option<LiveConfig>,
@@ -120,17 +132,40 @@ pub async fn run_market_stream(
         match connect_ws_via_proxy(&config.market_ws_url, &config.proxy_url).await {
             Ok((ws, _response)) => {
                 let (mut write, mut read) = ws.split();
-                write.send(payload.clone()).await?;
+                if let Err(error) = write.send(payload.clone()).await {
+                    eprintln!(
+                        "{LOG_PREFIX} market websocket subscription failed: {error:#}; reconnecting"
+                    );
+                    sleep(Duration::from_secs(3)).await;
+                    continue;
+                }
                 eprintln!(
                     "{LOG_PREFIX} subscribed to {} Polymarket CLOB tokens",
                     asset_ids.len()
                 );
 
                 while let Some(message) = read.next().await {
-                    match message? {
+                    let message = match message {
+                        Ok(message) => message,
+                        Err(error) => {
+                            eprintln!(
+                                "{LOG_PREFIX} market websocket read failed: {error:#}; reconnecting"
+                            );
+                            break;
+                        }
+                    };
+                    match message {
                         Message::Text(text) => {
-                            let value: Value = serde_json::from_str(&text)?;
-                            for record in parse_market_message(&value, &mut state) {
+                            let records = match parse_market_text(&text, &mut state) {
+                                MarketFrameControl::Records(records) => records,
+                                MarketFrameControl::Reconnect(error) => {
+                                    eprintln!(
+                                        "{LOG_PREFIX} invalid market websocket frame: {error:#}; reconnecting"
+                                    );
+                                    break;
+                                }
+                            };
+                            for record in records {
                                 eprintln!(
                                     "{LOG_PREFIX} {} {} {} bid={:?}/{:?} ask={:?}/{:?}",
                                     record.market_slug,
@@ -154,7 +189,14 @@ pub async fn run_market_stream(
                                 }
                             }
                         }
-                        Message::Ping(payload) => write.send(Message::Pong(payload)).await?,
+                        Message::Ping(payload) => {
+                            if let Err(error) = write.send(Message::Pong(payload)).await {
+                                eprintln!(
+                                    "{LOG_PREFIX} market websocket pong failed: {error:#}; reconnecting"
+                                );
+                                break;
+                            }
+                        }
                         Message::Close(_) => break,
                         _ => {}
                     }
@@ -310,5 +352,14 @@ mod tests {
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].bid_price.as_deref(), Some("0.61"));
         assert_eq!(records[0].ask_size.as_deref(), Some("20"));
+    }
+
+    #[test]
+    fn malformed_market_frame_requests_reconnect_instead_of_terminating_provider() {
+        let mut state = QuoteState::new("event", Vec::new());
+
+        let control = parse_market_text("{not-json", &mut state);
+
+        assert!(matches!(control, MarketFrameControl::Reconnect(_)));
     }
 }

@@ -30,6 +30,7 @@ pub enum SportsAction {
     Ignore,
 }
 
+#[derive(Debug)]
 enum StreamControl {
     Continue,
     Reconnect,
@@ -76,6 +77,21 @@ where
     W: Sink<Message> + Unpin,
     W::Error: std::fmt::Display,
 {
+    handle_text_message_with(write, text, event, config, write_observation).await
+}
+
+async fn handle_text_message_with<W, Emit>(
+    write: &mut W,
+    text: &str,
+    event: &DiscoveredEvent,
+    config: &Config,
+    mut emit: Emit,
+) -> Result<StreamControl>
+where
+    W: Sink<Message> + Unpin,
+    W::Error: std::fmt::Display,
+    Emit: FnMut(&PolymarketScoreObservation) -> Result<()>,
+{
     match parse_sports_message(text, event, config) {
         Ok(SportsAction::Pong) => {
             if let Err(error) = write.send(Message::Text("pong".into())).await {
@@ -83,7 +99,7 @@ where
                 return Ok(StreamControl::Reconnect);
             }
         }
-        Ok(SportsAction::Observation(record)) => write_observation(&record)?,
+        Ok(SportsAction::Observation(record)) => emit(&record)?,
         Ok(SportsAction::Ignore) => {}
         Err(error) => eprintln!("{LOG_PREFIX} invalid sports update: {error:#}"),
     }
@@ -103,10 +119,8 @@ pub async fn run_score_stream(config: Config, event: DiscoveredEvent) -> Result<
                                 Ok(StreamControl::Continue) => {}
                                 Ok(StreamControl::Reconnect) => break,
                                 Err(error) => {
-                                    eprintln!(
-                                        "{LOG_PREFIX} failed to write sports observation: {error:#}"
-                                    );
-                                    break;
+                                    return Err(error
+                                        .context("failed to write Polymarket sports observation"));
                                 }
                             }
                         }
@@ -195,6 +209,23 @@ mod tests {
             .unwrap();
 
         assert!(matches!(control, StreamControl::Reconnect));
+    }
+
+    #[tokio::test]
+    async fn observation_sink_failure_is_terminal() {
+        let mut sink = FailingSink;
+
+        let error = handle_text_message_with(
+            &mut sink,
+            r#"{"slug":"fifwc-rsa-can-2026-06-28","score":"1-0"}"#,
+            &event_fixture(),
+            &config_fixture(),
+            |_| Err(anyhow::anyhow!("stdout closed")),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().contains("stdout closed"));
     }
 
     fn event_fixture() -> DiscoveredEvent {

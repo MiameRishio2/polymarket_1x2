@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::io::Write;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, ensure, Result};
 use chrono::{SecondsFormat, Utc};
 use serde::Serialize;
 
@@ -55,6 +55,10 @@ impl OddsPortalOddsObservation {
         let Some(first) = records.first() else {
             bail!("cannot create OddsPortal odds observation from empty record batch");
         };
+        ensure!(
+            records.iter().all(|record| record.ts == first.ts),
+            "cannot create OddsPortal odds observation from records with inconsistent receipt timestamps"
+        );
         let mut grouped = BTreeMap::<(String, String), BTreeMap<String, String>>::new();
         for record in records {
             grouped
@@ -74,7 +78,7 @@ impl OddsPortalOddsObservation {
         Ok(Self {
             provider: "oddsportal",
             record_type: "oddsportal_odds",
-            received_at: now_rfc3339(),
+            received_at: first.ts.clone(),
             source_updated_at: None,
             event_id: first.event_id.clone(),
             event_name: first.event_name.clone(),
@@ -122,6 +126,21 @@ mod tests {
         assert_eq!(output.bookmakers[0].bookmaker_id, "16");
         assert_eq!(output.bookmakers[0].outcomes["X"], "3.80");
         assert_eq!(output.bookmakers[1].bookmaker_id, "18");
+        assert_eq!(output.received_at, records[0].ts);
+    }
+
+    #[test]
+    fn rejects_odds_batches_with_inconsistent_receipt_times() {
+        let mut records = vec![
+            odds_record("16", "bet365", "1", "5.50"),
+            odds_record("16", "bet365", "X", "3.80"),
+        ];
+        records[1].ts = "2026-06-28T12:00:01Z".to_string();
+
+        let error = OddsPortalOddsObservation::from_records(&records, "South Africa", "Canada")
+            .unwrap_err();
+
+        assert!(error.to_string().contains("receipt timestamps"));
     }
 
     #[test]

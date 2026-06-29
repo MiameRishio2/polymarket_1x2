@@ -15,6 +15,8 @@ use reqwest::header::{HeaderMap, HeaderValue};
 use tokio::time::{sleep, Duration, MissedTickBehavior};
 
 pub(crate) const LOG_PREFIX: &str = "[oddsportal]";
+pub(crate) const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+pub(crate) const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub async fn run_poll_loop(config: config::Config, interval: Duration) -> Result<()> {
     let client = build_client(&config)?;
@@ -67,6 +69,7 @@ struct CycleResult {
     score: Option<output::OddsPortalScoreObservation>,
 }
 
+#[derive(Debug)]
 struct CycleHandlingStatus {
     odds_succeeded: bool,
     score_succeeded: bool,
@@ -104,7 +107,7 @@ where
         ticker.tick().await;
         eprintln!("{LOG_PREFIX} starting collection pass");
         let result = run_one_cycle_with(collect_odds(), collect_score()).await?;
-        let status = handle_cycle_with(&result, &mut append_odds, &mut emit_odds, &mut emit_score);
+        let status = handle_cycle_with(&result, &mut append_odds, &mut emit_odds, &mut emit_score)?;
         if status.odds_succeeded {
             let records = result.odds.as_ref().expect("successful odds must exist");
             eprintln!(
@@ -150,37 +153,61 @@ fn handle_cycle_with<AppendOdds, EmitOdds, EmitScore>(
     mut append_odds: AppendOdds,
     mut emit_odds: EmitOdds,
     mut emit_score: EmitScore,
-) -> CycleHandlingStatus
+) -> Result<CycleHandlingStatus>
 where
     AppendOdds: FnMut(&[models::OddsPortalRecord]) -> Result<()>,
     EmitOdds: FnMut(&[models::OddsPortalRecord]) -> Result<()>,
     EmitScore: FnMut(&output::OddsPortalScoreObservation) -> Result<()>,
 {
-    let odds_succeeded = result.odds.as_ref().is_some_and(|records| {
-        if let Err(error) = append_odds(records) {
-            eprintln!("{LOG_PREFIX} odds append failed: {error:#}");
-            return false;
+    let mut first_error = None;
+    let mut odds_succeeded = false;
+    if let Some(records) = result.odds.as_ref() {
+        match append_odds(records) {
+            Ok(()) => match emit_odds(records) {
+                Ok(()) => odds_succeeded = true,
+                Err(error) => {
+                    eprintln!("{LOG_PREFIX} odds output failed: {error:#}");
+                    first_error = Some(error);
+                }
+            },
+            Err(error) => {
+                eprintln!("{LOG_PREFIX} odds append failed: {error:#}");
+                first_error = Some(error);
+            }
         }
-        if let Err(error) = emit_odds(records) {
-            eprintln!("{LOG_PREFIX} odds output failed: {error:#}");
-            return false;
+    }
+
+    let mut score_succeeded = false;
+    if let Some(record) = result.score.as_ref() {
+        match emit_score(record) {
+            Ok(()) => score_succeeded = true,
+            Err(error) => {
+                eprintln!("{LOG_PREFIX} score output failed: {error:#}");
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
         }
-        true
-    });
-    let score_succeeded = result.score.as_ref().is_some_and(|record| {
-        if let Err(error) = emit_score(record) {
-            eprintln!("{LOG_PREFIX} score output failed: {error:#}");
-            return false;
-        }
-        true
-    });
-    CycleHandlingStatus {
+    }
+
+    if let Some(error) = first_error {
+        return Err(error);
+    }
+    Ok(CycleHandlingStatus {
         odds_succeeded,
         score_succeeded,
-    }
+    })
 }
 
 fn build_client(config: &config::Config) -> Result<reqwest::Client> {
+    build_client_with_timeouts(config, HTTP_CONNECT_TIMEOUT, HTTP_REQUEST_TIMEOUT)
+}
+
+fn build_client_with_timeouts(
+    config: &config::Config,
+    connect_timeout: Duration,
+    request_timeout: Duration,
+) -> Result<reqwest::Client> {
     let mut headers = HeaderMap::new();
     headers.insert(
         "X-Requested-With",
@@ -189,12 +216,16 @@ fn build_client(config: &config::Config) -> Result<reqwest::Client> {
     let mut client = reqwest::Client::builder()
         .http1_only()
         .default_headers(headers)
-        .user_agent(config.user_agent.clone());
+        .user_agent(config.user_agent.clone())
+        .connect_timeout(connect_timeout)
+        .timeout(request_timeout);
     if let Some(proxy_url) = &config.proxy_url {
         client = client.proxy(
             reqwest::Proxy::all(proxy_url)
                 .with_context(|| format!("invalid OddsPortal proxy URL {proxy_url}"))?,
         );
+    } else {
+        client = client.no_proxy();
     }
     let client = client
         .build()
@@ -614,7 +645,8 @@ mod tests {
                 score_outputs.fetch_add(1, Ordering::SeqCst);
                 Ok(())
             },
-        );
+        )
+        .unwrap();
 
         assert_eq!(score_outputs.load(Ordering::SeqCst), 1);
     }
@@ -640,33 +672,39 @@ mod tests {
                 Ok(())
             },
             |_| unreachable!("failed score must not be emitted"),
-        );
+        )
+        .unwrap();
 
         assert_eq!(odds_appends.load(Ordering::SeqCst), 1);
         assert_eq!(odds_outputs.load(Ordering::SeqCst), 1);
     }
 
     #[test]
-    fn odds_append_failure_short_circuits_grouped_output_and_marks_side_failed() {
+    fn odds_append_failure_short_circuits_grouped_output_and_processes_score() {
         let grouped_outputs = AtomicUsize::new(0);
+        let score_outputs = AtomicUsize::new(0);
         let result = CycleResult {
             odds: Some(vec![odds_fixture()]),
             score: Some(score_fixture()),
         };
 
-        let status = handle_cycle_with(
+        let error = handle_cycle_with(
             &result,
             |_| Err(anyhow!("append failed")),
             |_| {
                 grouped_outputs.fetch_add(1, Ordering::SeqCst);
                 Ok(())
             },
-            |_| Ok(()),
-        );
+            |_| {
+                score_outputs.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .unwrap_err();
 
-        assert!(!status.odds_succeeded);
-        assert!(status.score_succeeded);
+        assert!(error.to_string().contains("append failed"));
         assert_eq!(grouped_outputs.load(Ordering::SeqCst), 0);
+        assert_eq!(score_outputs.load(Ordering::SeqCst), 1);
     }
 
     #[test]
@@ -681,10 +719,104 @@ mod tests {
             |_| Ok(()),
             |_| Err(anyhow!("odds stdout failed")),
             |_| Err(anyhow!("score stdout failed")),
-        );
+        )
+        .unwrap_err();
 
-        assert!(!status.odds_succeeded);
-        assert!(!status.score_succeeded);
+        assert!(status.to_string().contains("odds stdout failed"));
+    }
+
+    #[test]
+    fn first_sink_failure_is_returned_after_peer_processing() {
+        let score_outputs = AtomicUsize::new(0);
+        let result = CycleResult {
+            odds: Some(vec![odds_fixture()]),
+            score: Some(score_fixture()),
+        };
+
+        let error = handle_cycle_with(
+            &result,
+            |_| Err(anyhow!("first append failure")),
+            |_| unreachable!("append failure must short-circuit grouped output"),
+            |_| {
+                score_outputs.fetch_add(1, Ordering::SeqCst);
+                Err(anyhow!("later score failure"))
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(score_outputs.load(Ordering::SeqCst), 1);
+        assert!(error.to_string().contains("first append failure"));
+    }
+
+    #[tokio::test]
+    async fn polling_returns_terminal_sink_error_after_peer_processing() {
+        let score_outputs = Arc::new(AtomicUsize::new(0));
+        let observed_scores = Arc::clone(&score_outputs);
+
+        let error = run_poll_loop_with(
+            config::Config::default(),
+            Duration::from_secs(60),
+            Some(1),
+            test_discovery(),
+            || async { Ok(vec![odds_fixture()]) },
+            || async { Ok(score_fixture()) },
+            |_| Err(anyhow!("terminal append failure")),
+            |_| unreachable!("append failure must short-circuit grouped output"),
+            move |_| {
+                observed_scores.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(score_outputs.load(Ordering::SeqCst), 1);
+        assert!(error.to_string().contains("terminal append failure"));
+    }
+
+    #[test]
+    fn terminal_sink_error_does_not_log_cycle_success() {
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "oddsportal::tests::terminal_sink_error_output_helper",
+                "--nocapture",
+            ])
+            .env("ODDSPORTAL_TERMINAL_SINK_HELPER", "1")
+            .output()
+            .unwrap();
+
+        assert!(output.status.success());
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(stderr.contains("[oddsportal] odds append failed"));
+        assert!(!stderr.contains("collection pass succeeded"), "{stderr}");
+        assert!(
+            !stderr.contains("score collection pass succeeded"),
+            "{stderr}"
+        );
+    }
+
+    #[tokio::test]
+    async fn terminal_sink_error_output_helper() {
+        if std::env::var_os("ODDSPORTAL_TERMINAL_SINK_HELPER").is_none() {
+            return;
+        }
+
+        let error = run_poll_loop_with(
+            config::Config::default(),
+            Duration::from_secs(60),
+            Some(1),
+            test_discovery(),
+            || async { Ok(vec![odds_fixture()]) },
+            || async { Ok(score_fixture()) },
+            |_| Err(anyhow!("terminal append failure")),
+            |_| unreachable!("append failure must short-circuit grouped output"),
+            |_| Ok(()),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().contains("terminal append failure"));
     }
 
     #[tokio::test]
@@ -736,6 +868,28 @@ mod tests {
         .unwrap_err();
 
         assert!(error.to_string().contains("returned error"));
+        assert_eq!(server.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn stalled_response_is_bounded_by_total_request_timeout() {
+        let server = TestHttpServer::start_stalled().await;
+        let client = build_client_with_timeouts(
+            &config::Config::default(),
+            Duration::from_millis(50),
+            Duration::from_millis(50),
+        )
+        .unwrap();
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(1),
+            get_text_once(&client, &server.url, "stalled test"),
+        )
+        .await
+        .expect("client request timeout must settle the stalled response");
+
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("request failed"), "{error:#}");
         assert_eq!(server.request_count(), 1);
     }
 
@@ -946,6 +1100,28 @@ mod tests {
             });
             Self {
                 url: format!("http://{address}/data"),
+                requests,
+                task,
+            }
+        }
+
+        async fn start_stalled() -> Self {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let requests = Arc::new(AtomicUsize::new(0));
+            let observed = Arc::clone(&requests);
+            let task = tokio::spawn(async move {
+                loop {
+                    let (stream, _) = listener.accept().await.unwrap();
+                    observed.fetch_add(1, Ordering::SeqCst);
+                    stream.readable().await.unwrap();
+                    let mut request = [0_u8; 4096];
+                    let _ = stream.try_read(&mut request);
+                    std::future::pending::<()>().await;
+                }
+            });
+            Self {
+                url: format!("http://{address}/stalled"),
                 requests,
                 task,
             }

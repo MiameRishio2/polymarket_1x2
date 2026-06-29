@@ -23,7 +23,7 @@ Verified on 2026-06-29 in branch `discover-match-by-team-names`.
 | Task-brief `rg -n 'polymarket\\.url\|oddsportal:\\n.*home_team\|cross-provider.*aggregat' ... \|\| true` | 0 | `rg` itself rejected literal `\n` without multiline mode; `|| true` made the shell command exit 0. |
 | Corrected `rg -Un 'polymarket\\.url\|oddsportal:\\n.*home_team\|cross-provider.*aggregat' ... \|\| true` | 0 | One intentional proposal sentence matched: “without cross-provider aggregation.” No configured `polymarket.url`, duplicated OddsPortal team target, or aggregation requirement was found. |
 | `cargo test output` | 0 | 8 focused output tests passed; 0 failed. |
-| `cargo test` | 0 | 103 tests passed; 0 failed. |
+| `cargo test` | 0 | 115 tests passed; 0 failed after final-review fixes. |
 | `openspec validate discover-match-by-team-names --strict` | 0 | `Change 'discover-match-by-team-names' is valid`. |
 
 ## Bounded read-only smoke
@@ -71,8 +71,11 @@ encounter repeated values or rate limiting.
 
 - Documentation examples were checked against the serialized Rust observation structs.
 - `trade.enabled` remains `false`; no trading code or credential handling changed.
-- No runtime logs, temporary configurations, credentials, target artifacts, or controller-owned
-  `.comet.yaml` changes are included in the task diff.
+- No runtime logs, temporary configurations, credentials, or target artifacts are included in the
+  task diff. The Task 8 documentation commit excluded `.comet.yaml`; the final branch
+  intentionally records the previously selected `build_mode: subagent-driven-development` and
+  `isolation: branch`. Its `phase: build` and `verify_result: pending` remain correct until the
+  Comet build guard is run.
 - The verification evidence supports documentation task 5.2 and execution of the required
   validation/smoke procedure for task 5.3, with the live external blocker stated rather than
   converted into a success claim.
@@ -125,6 +128,33 @@ Results: known-value scan exit 0, sensitive-marker scan exit 0, and trade-action
 Thus the live smoke stdout and stderr contained none of the committed placeholder/credential
 values, sensitive field markers, authorization/signature markers, or placement/cancellation
 messages.
+
+## Final-review fix verification
+
+No additional live smoke was run for the final-review fixes. The live evidence above remains
+partial and is not upgraded to a successful dual-provider smoke claim.
+
+The final-review fixes add deterministic coverage for terminal output/persistence failures,
+peer-side processing after the first OddsPortal sink failure, CLOB malformed-frame reconnect
+control, terminal Sports stdout failures, strict score-payload schema validation, bounded HTTP
+responses, and receipt timestamps captured before synchronous persistence.
+
+| Command | Exit | Result |
+| --- | ---: | --- |
+| `cargo test oddsportal::score::tests -- --nocapture` | 0 | 5 score parsing/unavailable tests passed. |
+| `cargo test oddsportal::tests::first_sink_failure_is_returned_after_peer_processing -- --exact --nocapture` | 0 | First sink failure was retained after the score side ran. |
+| `cargo test oddsportal::tests::polling_returns_terminal_sink_error_after_peer_processing -- --exact --nocapture` | 0 | Poll loop returned the terminal sink error after peer processing. |
+| `cargo test oddsportal::tests::terminal_sink_error_does_not_log_cycle_success -- --exact --nocapture` | 0 | Terminal sink diagnostics contained no contradictory cycle-success line. |
+| `cargo test oddsportal::tests::stalled_response_is_bounded_by_total_request_timeout -- --exact --nocapture` | 0 | A stalled loopback response settled through the injected finite timeout. |
+| `cargo test polymarket::sports::tests::observation_sink_failure_is_terminal -- --exact --nocapture` | 0 | Sports observation sink failure propagated as terminal. |
+| `cargo test polymarket::ws::tests::malformed_market_frame_requests_reconnect_instead_of_terminating_provider -- --exact --nocapture` | 0 | Malformed CLOB text selected reconnect control rather than provider termination. |
+| `cargo test oddsportal::output::tests -- --nocapture` | 0 | 4 grouped-output/timestamp tests passed. |
+| `cargo test oddsportal::odds::tests -- --nocapture` | 0 | 3 odds normalization/timestamp tests passed. |
+| `cargo test polymarket::output::tests -- --nocapture` | 0 | 3 Polymarket output/timestamp tests passed. |
+| `cargo fmt --all -- --check` | 0 | Formatting check passed. |
+| `cargo test` | 0 | 115 tests passed; 0 failed. |
+| `openspec validate discover-match-by-team-names --strict` | 0 | Change validation passed in strict mode. |
+| `git diff --check` | 0 | No whitespace errors. |
 
 ### Deterministic four-observation scan
 

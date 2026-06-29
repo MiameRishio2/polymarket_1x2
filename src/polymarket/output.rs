@@ -1,7 +1,6 @@
 use std::io::Write;
 
 use anyhow::Result;
-use chrono::{SecondsFormat, Utc};
 use serde::Serialize;
 
 use crate::polymarket::models::{MatchResult, QuoteRecord, TokenMeta};
@@ -56,7 +55,7 @@ impl PolymarketOddsObservation {
             Self {
                 provider: "polymarket",
                 record_type: "polymarket_odds",
-                received_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+                received_at: quote.ts.clone(),
                 source_updated_at: None,
                 event_slug: quote.event_slug.clone(),
                 home_team: home_team.to_string(),
@@ -116,6 +115,7 @@ mod tests {
             assert_eq!(json["away_team"], "Canada");
             assert_eq!(json["bid_price"], "0.16");
             assert_eq!(json["ask_price"], "0.17");
+            assert_eq!(json["received_at"], "2026-06-28T12:00:00Z");
         }
     }
 
