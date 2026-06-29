@@ -67,6 +67,11 @@ struct CycleResult {
     score: Option<output::OddsPortalScoreObservation>,
 }
 
+struct CycleHandlingStatus {
+    odds_succeeded: bool,
+    score_succeeded: bool,
+}
+
 async fn run_poll_loop_with<Odds, OddsFuture, Score, ScoreFuture, AppendOdds, EmitOdds, EmitScore>(
     _config: config::Config,
     interval: Duration,
@@ -99,14 +104,15 @@ where
         ticker.tick().await;
         println!("{LOG_PREFIX} starting collection pass");
         let result = run_one_cycle_with(collect_odds(), collect_score()).await?;
-        handle_cycle_with(&result, &mut append_odds, &mut emit_odds, &mut emit_score);
-        if let Some(records) = &result.odds {
+        let status = handle_cycle_with(&result, &mut append_odds, &mut emit_odds, &mut emit_score);
+        if status.odds_succeeded {
+            let records = result.odds.as_ref().expect("successful odds must exist");
             println!(
                 "{LOG_PREFIX} collection pass succeeded with {} records",
                 records.len()
             );
         }
-        if result.score.is_some() {
+        if status.score_succeeded {
             println!("{LOG_PREFIX} score collection pass succeeded");
         }
         completed += 1;
@@ -144,23 +150,33 @@ fn handle_cycle_with<AppendOdds, EmitOdds, EmitScore>(
     mut append_odds: AppendOdds,
     mut emit_odds: EmitOdds,
     mut emit_score: EmitScore,
-) where
+) -> CycleHandlingStatus
+where
     AppendOdds: FnMut(&[models::OddsPortalRecord]) -> Result<()>,
     EmitOdds: FnMut(&[models::OddsPortalRecord]) -> Result<()>,
     EmitScore: FnMut(&output::OddsPortalScoreObservation) -> Result<()>,
 {
-    if let Some(records) = &result.odds {
+    let odds_succeeded = result.odds.as_ref().is_some_and(|records| {
         if let Err(error) = append_odds(records) {
             eprintln!("{LOG_PREFIX} odds append failed: {error:#}");
+            return false;
         }
         if let Err(error) = emit_odds(records) {
             eprintln!("{LOG_PREFIX} odds output failed: {error:#}");
+            return false;
         }
-    }
-    if let Some(record) = &result.score {
+        true
+    });
+    let score_succeeded = result.score.as_ref().is_some_and(|record| {
         if let Err(error) = emit_score(record) {
             eprintln!("{LOG_PREFIX} score output failed: {error:#}");
+            return false;
         }
+        true
+    });
+    CycleHandlingStatus {
+        odds_succeeded,
+        score_succeeded,
     }
 }
 
@@ -606,6 +622,47 @@ mod tests {
 
         assert_eq!(odds_appends.load(Ordering::SeqCst), 1);
         assert_eq!(odds_outputs.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn odds_append_failure_short_circuits_grouped_output_and_marks_side_failed() {
+        let grouped_outputs = AtomicUsize::new(0);
+        let result = CycleResult {
+            odds: Some(vec![odds_fixture()]),
+            score: Some(score_fixture()),
+        };
+
+        let status = handle_cycle_with(
+            &result,
+            |_| Err(anyhow!("append failed")),
+            |_| {
+                grouped_outputs.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+            |_| Ok(()),
+        );
+
+        assert!(!status.odds_succeeded);
+        assert!(status.score_succeeded);
+        assert_eq!(grouped_outputs.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn stdout_sink_failures_mark_each_side_failed() {
+        let result = CycleResult {
+            odds: Some(vec![odds_fixture()]),
+            score: Some(score_fixture()),
+        };
+
+        let status = handle_cycle_with(
+            &result,
+            |_| Ok(()),
+            |_| Err(anyhow!("odds stdout failed")),
+            |_| Err(anyhow!("score stdout failed")),
+        );
+
+        assert!(!status.odds_succeeded);
+        assert!(!status.score_succeeded);
     }
 
     #[tokio::test]

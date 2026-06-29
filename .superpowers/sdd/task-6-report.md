@@ -199,3 +199,63 @@ Exit 0: 99 passed, 0 failed, 0 ignored.
 
 Follow-up concerns: none. The loopback server is test-only, binds an ephemeral localhost port,
 and bypasses ambient proxy variables for deterministic request counts.
+
+## Sink-status regression follow-up
+
+### Root cause
+
+The injectable sink handler logged append/output errors but returned `()`. The polling loop then
+used the presence of collected odds or score (`Option::is_some`) as its success signal. That
+discarded the distinction between collection success and required sink success. The handler also
+called grouped odds output after append failure, violating the required per-outcome JSONL-first
+ordering.
+
+### RED
+
+Command:
+
+```text
+cargo test oddsportal::tests::odds_append_failure_short_circuits_grouped_output_and_marks_side_failed -- --exact
+```
+
+Result: exit 101. Compilation failed with `E0609` because `handle_cycle_with` returned `()` and
+therefore had no `odds_succeeded` or `score_succeeded` status fields.
+
+### GREEN
+
+Commands:
+
+```text
+cargo test oddsportal::tests::odds_append_failure_short_circuits_grouped_output_and_marks_side_failed -- --exact
+cargo test oddsportal::tests::stdout_sink_failures_mark_each_side_failed -- --exact
+```
+
+Both exited 0 with 1 passed and 0 failed.
+
+The handler now returns independent per-side status. Odds append failure logs the failure,
+short-circuits grouped odds output, and leaves score handling independent. Grouped odds or score
+stdout failure marks only that side failed. Polling success diagnostics are emitted only from
+these post-sink statuses, and the loop continues to its next interval after all sink failures.
+
+### Verification
+
+Focused commands:
+
+```text
+cargo test oddsportal::tests
+cargo test oddsportal::logging::tests
+cargo test oddsportal::output::tests
+cargo test oddsportal::score::tests
+```
+
+All exited 0; respectively 20, 1, 3, and 2 tests passed.
+
+Full suite:
+
+```text
+cargo test
+```
+
+Exit 0: 101 passed, 0 failed, 0 ignored.
+
+Concerns: none.
