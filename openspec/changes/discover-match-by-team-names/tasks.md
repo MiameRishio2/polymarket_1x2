@@ -27,9 +27,9 @@
 - [x] 4.1 Add H2H fixture tests for independent odds and score request URL discovery.
 - [x] 4.2 Add decoder and serialization tests for available and pre-match-unavailable score
   responses plus grouped all-bookmaker 1X2 JSON output.
-- [ ] 4.3 Add paused-time tests proving one-second non-overlapping cycles, concurrent odds/score
+- [x] 4.3 Add paused-time tests proving one-second non-overlapping cycles, concurrent odds/score
   requests, and preservation of either successful side when the other fails.
-- [ ] 4.4 Implement independent odds and score collection with JSON stdout and unchanged odds
+- [x] 4.4 Implement independent odds and score collection with JSON stdout and unchanged odds
   JSONL logging.
 
 ## 5. Output, Documentation, and Verification
