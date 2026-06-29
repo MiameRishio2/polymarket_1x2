@@ -216,6 +216,7 @@ mod tests {
                 question: SCENARIO_NAME.to_string(),
                 outcome: "New Zealand".to_string(),
                 asset_id: "asset-101".to_string(),
+                result: None,
             }],
         );
         state.apply_book(

@@ -47,16 +47,9 @@ pub fn parse_tournament_match(html: &str, home: &str, away: &str) -> Result<Disc
 
 pub fn parse_h2h_request_metadata(html: &str) -> Result<RequestMetadata> {
     let decoded = decode_attr(html);
-    let marker = r#""requestPreMatch":{"url":""#;
-    let start = decoded
-        .find(marker)
+    let raw_url = find_request_url(&decoded, "requestPreMatch")
         .ok_or_else(|| anyhow!("OddsPortal H2H page missing requestPreMatch.url"))?
-        + marker.len();
-    let tail = &decoded[start..];
-    let end = tail
-        .find('"')
-        .ok_or_else(|| anyhow!("OddsPortal requestPreMatch.url is unterminated"))?;
-    let raw_url = tail[..end].replace("\\/", "/");
+        .replace("\\/", "/");
     let fallback_pre_match_url = absolute_url(DEFAULT_BASE_URL, &raw_url)?;
     let pre_match_url = find_json_string(&decoded, r#""xhash":""#)
         .and_then(|hash| {
@@ -68,11 +61,16 @@ pub fn parse_h2h_request_metadata(html: &str) -> Result<RequestMetadata> {
         .filter(|hash| !hash.is_empty())
         .and_then(|hash| pre_match_url_with_hash(&fallback_pre_match_url, &hash).ok())
         .unwrap_or_else(|| fallback_pre_match_url.clone());
+    let score_url = find_request_url(&decoded, "updateScoreRequest")
+        .map(|raw| raw.replace("\\/", "/"))
+        .map(|raw| absolute_url(DEFAULT_BASE_URL, &raw))
+        .transpose()?;
 
     Ok(RequestMetadata {
         fallback_pre_match_url: (pre_match_url != fallback_pre_match_url)
             .then_some(fallback_pre_match_url),
         pre_match_url,
+        score_url,
     })
 }
 
@@ -170,6 +168,16 @@ fn find_json_string(text: &str, marker: &str) -> Option<String> {
     Some(tail[..end].to_string())
 }
 
+fn find_request_url(text: &str, request_name: &str) -> Option<String> {
+    let request_marker = format!(r#""{request_name}""#);
+    let request = &text[text.find(&request_marker)? + request_marker.len()..];
+    let object = request.trim_start().strip_prefix(':')?.trim_start();
+    let object = object.strip_prefix('{')?.trim_start();
+    let url = object.strip_prefix(r#""url""#)?.trim_start();
+    let value = url.strip_prefix(':')?.trim_start().strip_prefix('"')?;
+    Some(value[..value.find('"')?].to_string())
+}
+
 #[derive(Debug, Deserialize)]
 struct TournamentRows {
     rows: Vec<TournamentRow>,
@@ -210,6 +218,32 @@ mod tests {
             "https://www.oddsportal.com/match-event/1-1-bsJSJ30L-1-2-yj159.dat?_="
         );
         assert_eq!(metadata.fallback_pre_match_url, None);
+    }
+
+    #[test]
+    fn extracts_odds_and_score_request_urls_independently() {
+        let html = r#"<Event :data="{&quot;requestPreMatch&quot;:{
+          &quot;url&quot;:&quot;\/match-event\/1-1-EZmXxG15-1-2-yj93f.dat?_=&quot;},
+          &quot;updateScoreRequest&quot;:{
+          &quot;url&quot;:&quot;\/feed\/postmatch-score\/1-EZmXxG15-yj93f.dat?_=&quot;}}">
+          </Event>"#;
+
+        let metadata = parse_h2h_request_metadata(html).unwrap();
+
+        assert_eq!(
+            metadata.score_url.as_deref(),
+            Some("https://www.oddsportal.com/feed/postmatch-score/1-EZmXxG15-yj93f.dat?_=")
+        );
+    }
+
+    #[test]
+    fn missing_score_url_does_not_hide_odds_url() {
+        let html = r#"<event :data="{&quot;requestPreMatch&quot;:{&quot;url&quot;:&quot;\/match-event\/1-1-bsJSJ30L-1-2-yj159.dat?_=&quot;}}"></event>"#;
+
+        let metadata = parse_h2h_request_metadata(html).unwrap();
+
+        assert!(metadata.pre_match_url.contains("/match-event/"));
+        assert_eq!(metadata.score_url, None);
     }
 
     #[test]

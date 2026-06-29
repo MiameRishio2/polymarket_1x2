@@ -50,17 +50,17 @@ strategy:
     directional_loss_lock_threshold: 0.0
     high_risk_entry_diff: 0.15
     high_risk_size_multiplier: 0.5
+match:
+  home_team: South Africa
+  away_team: Canada
 polymarket:
   enabled: true
-  url: https://polymarket.com/ja/sports/world-cup/fifwc-jor-arg-2026-06-27
   log_path: logs/polymarket_quotes.log
 oddsportal:
   enabled: true
   tournament_url: https://www.oddsportal.com/football/world/world-championship-2026/
-  home_team: Jordan
-  away_team: Argentina
   log_path: logs/oddsportal_odds.log
-  poll_interval_seconds: 30
+  poll_interval_seconds: 1
 trade:
   enabled: false
   trader_mode: real

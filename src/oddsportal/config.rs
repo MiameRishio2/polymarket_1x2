@@ -22,10 +22,6 @@ pub struct FileConfig {
     enabled: bool,
     #[serde(default = "default_tournament_url")]
     tournament_url: String,
-    #[serde(default = "default_home_team")]
-    home_team: String,
-    #[serde(default = "default_away_team")]
-    away_team: String,
     #[serde(default = "default_log_path")]
     log_path: PathBuf,
     #[serde(default = "default_poll_interval_seconds")]
@@ -37,8 +33,6 @@ impl Default for FileConfig {
         Self {
             enabled: true,
             tournament_url: default_tournament_url(),
-            home_team: default_home_team(),
-            away_team: default_away_team(),
             log_path: default_log_path(),
             poll_interval_seconds: DEFAULT_POLL_INTERVAL_SECONDS,
         }
@@ -46,7 +40,12 @@ impl Default for FileConfig {
 }
 
 impl FileConfig {
-    pub fn into_runtime(self, proxy_url: Option<String>) -> Result<(bool, Config, Duration)> {
+    pub fn into_runtime(
+        self,
+        proxy_url: Option<String>,
+        home_team: String,
+        away_team: String,
+    ) -> Result<(bool, Config, Duration)> {
         if self.enabled && self.poll_interval_seconds == 0 {
             bail!("oddsportal.poll_interval_seconds must be greater than zero");
         }
@@ -56,8 +55,8 @@ impl FileConfig {
             self.enabled,
             Config {
                 tournament_url: self.tournament_url,
-                home_team: self.home_team,
-                away_team: self.away_team,
+                home_team,
+                away_team,
                 proxy_url,
                 log_path: self.log_path,
                 ..defaults
@@ -73,14 +72,6 @@ fn default_true() -> bool {
 
 fn default_tournament_url() -> String {
     DEFAULT_TOURNAMENT_URL.to_string()
-}
-
-fn default_home_team() -> String {
-    DEFAULT_HOME_TEAM.to_string()
-}
-
-fn default_away_team() -> String {
-    DEFAULT_AWAY_TEAM.to_string()
 }
 
 fn default_log_path() -> PathBuf {
@@ -136,15 +127,18 @@ mod tests {
             r#"
 enabled: true
 tournament_url: https://www.oddsportal.com/football/world/world-championship-2026/
-home_team: Australia
-away_team: Egypt
 log_path: logs/oddsportal.log
 poll_interval_seconds: 30
 "#,
         )
         .unwrap();
-        let (enabled, config, interval) =
-            file.into_runtime(Some("http://proxy:7890".into())).unwrap();
+        let (enabled, config, interval) = file
+            .into_runtime(
+                Some("http://proxy:7890".into()),
+                "Australia".into(),
+                "Egypt".into(),
+            )
+            .unwrap();
 
         assert!(enabled);
         assert_eq!(config.home_team, "Australia");
@@ -157,7 +151,9 @@ poll_interval_seconds: 30
     fn zero_poll_interval_is_rejected() {
         let file: FileConfig = serde_yaml::from_str("poll_interval_seconds: 0").unwrap();
         assert_eq!(
-            file.into_runtime(None).unwrap_err().to_string(),
+            file.into_runtime(None, "Australia".into(), "Egypt".into())
+                .unwrap_err()
+                .to_string(),
             "oddsportal.poll_interval_seconds must be greater than zero"
         );
     }

@@ -390,6 +390,7 @@ mod tests {
                 question: "Test?".into(),
                 outcome: "First".into(),
                 asset_id: "101".into(),
+                result: None,
             }],
         }
     }
@@ -417,6 +418,9 @@ proxy: http://127.0.0.1:7890
 gamma_host: https://gamma-api.polymarket.com
 host: https://clob.polymarket.com
 chain_id: 137
+match:
+  home_team: Australia
+  away_team: Egypt
 accounts:
   - name: long-test
     type: long

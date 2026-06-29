@@ -93,23 +93,20 @@ async fn main() -> anyhow::Result<()> {
             let mut providers = HashMap::new();
 
             if let Some(runtime) = runtime.polymarket {
-                println!(
-                    "[polymarket] starting collector for {}",
-                    runtime.config.polymarket_url
+                eprintln!(
+                    "[polymarket] starting collector for {} vs {}",
+                    runtime.config.home_team, runtime.config.away_team
                 );
                 spawn_local_provider(
                     &mut tasks,
                     &mut providers,
                     Provider::Polymarket,
-                    async move {
-                        let event = polymarket::discovery::discover_event(&runtime.config).await?;
-                        polymarket::ws::run_market_stream(runtime.config, runtime.live, event).await
-                    },
+                    polymarket::run(runtime.config, runtime.live),
                 );
             }
 
             if let Some(runtime) = runtime.oddsportal {
-                println!(
+                eprintln!(
                     "[oddsportal] starting collector for {} vs {}",
                     runtime.config.home_team, runtime.config.away_team
                 );
@@ -135,11 +132,39 @@ fn install_crypto_provider() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
 
     use anyhow::anyhow;
+
+    fn classify_observation_stdout(stdout: &str) -> Result<Vec<serde_json::Value>, String> {
+        let mut observations = Vec::new();
+        for line in stdout.lines() {
+            if is_test_harness_line(line) {
+                continue;
+            }
+            let observation = serde_json::from_str::<serde_json::Value>(line)
+                .map_err(|error| format!("unexpected non-JSON stdout line {line:?}: {error}"))?;
+            if !observation.is_object() {
+                return Err(format!(
+                    "stdout observation must be a JSON object: {observation}"
+                ));
+            }
+            observations.push(observation);
+        }
+        Ok(observations)
+    }
+
+    fn is_test_harness_line(line: &str) -> bool {
+        line.is_empty()
+            || line
+                .strip_prefix("running ")
+                .is_some_and(|rest| rest.ends_with(" test") || rest.ends_with(" tests"))
+            || (line.starts_with("test ") && line.ends_with(" ... ok"))
+            || line.starts_with("test result: ok.")
+    }
 
     #[test]
     fn crypto_provider_install_is_idempotent() {
@@ -153,6 +178,52 @@ mod tests {
     fn provider_log_prefixes_are_stable() {
         assert_eq!(polymarket::LOG_PREFIX, "[polymarket]");
         assert_eq!(oddsportal::LOG_PREFIX, "[oddsportal]");
+        assert_eq!(polymarket::live::LOG_PREFIX, "[trade]");
+    }
+
+    #[test]
+    fn observation_helper_keeps_stdout_json_and_diagnostics_on_stderr() {
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "oddsportal::tests::polling_output_helper",
+                "--nocapture",
+            ])
+            .env("ODDSPORTAL_POLLING_OUTPUT_HELPER", "1")
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let observations = classify_observation_stdout(&stdout).unwrap();
+        let mut record_types = observations
+            .iter()
+            .map(|observation| observation["type"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        record_types.sort_unstable();
+        assert_eq!(
+            record_types,
+            [
+                "oddsportal_odds",
+                "oddsportal_score",
+                "polymarket_odds",
+                "polymarket_score",
+            ],
+            "{stdout}"
+        );
+        for prefix in ["[polymarket]", "[oddsportal]", "[trade]"] {
+            assert!(!stdout.contains(prefix), "{stdout}");
+        }
+
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        for prefix in ["[polymarket]", "[oddsportal]", "[trade]"] {
+            assert!(stderr.contains(prefix), "{stderr}");
+        }
+    }
+
+    #[test]
+    fn stdout_classifier_rejects_plain_diagnostic() {
+        assert!(classify_observation_stdout("plain diagnostic\n").is_err());
     }
 
     #[tokio::test]

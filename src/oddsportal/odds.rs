@@ -30,6 +30,7 @@ pub fn normalize_1x2_odds(
             anyhow!("decoded OddsPortal response missing oddsdata.back; keys: {keys}")
         })?;
 
+    let received_at = Utc::now().to_rfc3339();
     let mut records = Vec::new();
     for market in back.values() {
         let Some(odds_by_bookmaker) = market.get("odds").and_then(Value::as_object) else {
@@ -52,7 +53,7 @@ pub fn normalize_1x2_odds(
                     continue;
                 };
                 records.push(OddsPortalRecord {
-                    ts: Utc::now().to_rfc3339(),
+                    ts: received_at.clone(),
                     provider: "oddsportal".to_string(),
                     event_id: event_id.clone(),
                     event_name: event_name.to_string(),
@@ -145,5 +146,30 @@ mod tests {
             normalize_1x2_odds(&decoded, "Norway - France", "https://example.test").unwrap();
 
         assert!(records.is_empty());
+    }
+
+    #[test]
+    fn assigns_one_receipt_timestamp_to_the_normalized_batch() {
+        let decoded = serde_json::json!({
+            "d": {
+                "encodeventId": "bsJSJ30L",
+                "oddsdata": {
+                    "back": {
+                        "0": {
+                            "odds": {
+                                "16": {"0": "4.20", "1": "3.70", "2": "1.85"},
+                                "18": {"0": "4.25", "1": "3.75", "2": "1.80"}
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        let records =
+            normalize_1x2_odds(&decoded, "Norway - France", "https://example.test").unwrap();
+
+        assert_eq!(records.len(), 6);
+        assert!(records.iter().all(|record| record.ts == records[0].ts));
     }
 }

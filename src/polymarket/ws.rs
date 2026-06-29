@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
@@ -10,6 +12,7 @@ use url::Url;
 use crate::polymarket::logging::QuoteLogger;
 use crate::polymarket::models::{DiscoveredEvent, PriceLevel, QuoteRecord};
 use crate::polymarket::order::SCENARIO_NAME;
+use crate::polymarket::output::{self, PolymarketOddsObservation};
 use crate::polymarket::quotes::QuoteState;
 use crate::polymarket::LOG_PREFIX;
 use crate::polymarket::{config::LiveConfig, live::run_fixed_live_flow};
@@ -38,6 +41,18 @@ pub fn parse_market_message(value: &Value, state: &mut QuoteState) -> Vec<QuoteR
     }
 }
 
+enum MarketFrameControl {
+    Records(Vec<QuoteRecord>),
+    Reconnect(anyhow::Error),
+}
+
+fn parse_market_text(text: &str, state: &mut QuoteState) -> MarketFrameControl {
+    match serde_json::from_str::<Value>(text) {
+        Ok(value) => MarketFrameControl::Records(parse_market_message(&value, state)),
+        Err(error) => MarketFrameControl::Reconnect(error.into()),
+    }
+}
+
 pub async fn run_market_stream(
     config: crate::polymarket::config::Config,
     live: Option<LiveConfig>,
@@ -51,6 +66,11 @@ pub async fn run_market_stream(
     if asset_ids.is_empty() {
         bail!("no CLOB token ids discovered");
     }
+    let tokens_by_asset: HashMap<_, _> = event
+        .tokens
+        .iter()
+        .map(|token| (token.asset_id.as_str(), token))
+        .collect();
 
     let mut logger = QuoteLogger::new(&config.log_path)?;
     let mut state = QuoteState::new(event.slug.clone(), event.tokens.clone());
@@ -58,7 +78,7 @@ pub async fn run_market_stream(
     for record in
         crate::polymarket::clob::load_initial_orderbooks(&clob_client, &event, &mut state).await?
     {
-        println!(
+        eprintln!(
             "{LOG_PREFIX} {} {} {} bid={:?}/{:?} ask={:?}/{:?}",
             record.market_slug,
             record.outcome,
@@ -69,6 +89,16 @@ pub async fn run_market_stream(
             record.ask_size
         );
         logger.append(&record)?;
+        if let Some(token) = tokens_by_asset.get(record.asset_id.as_str()) {
+            if let Some(observation) = PolymarketOddsObservation::from_quote(
+                &record,
+                token,
+                &config.home_team,
+                &config.away_team,
+            ) {
+                output::write_observation(&observation)?;
+            }
+        }
     }
 
     let live_receipt = match run_fixed_live_flow(live.as_ref(), &event, &state).await {
@@ -83,7 +113,7 @@ pub async fn run_market_stream(
     };
     if let Some(receipt) = live_receipt {
         let token = &event.tokens[0];
-        println!(
+        eprintln!(
             "{} {} fixed flow accepted for {} {} {} buy_order_id={} sell_order_id={}",
             crate::polymarket::live::LOG_PREFIX,
             SCENARIO_NAME,
@@ -98,22 +128,45 @@ pub async fn run_market_stream(
     let payload = Message::Text(subscription_payload(&asset_ids).to_string().into());
 
     loop {
-        println!("{LOG_PREFIX} connecting market websocket");
+        eprintln!("{LOG_PREFIX} connecting market websocket");
         match connect_ws_via_proxy(&config.market_ws_url, &config.proxy_url).await {
             Ok((ws, _response)) => {
                 let (mut write, mut read) = ws.split();
-                write.send(payload.clone()).await?;
-                println!(
+                if let Err(error) = write.send(payload.clone()).await {
+                    eprintln!(
+                        "{LOG_PREFIX} market websocket subscription failed: {error:#}; reconnecting"
+                    );
+                    sleep(Duration::from_secs(3)).await;
+                    continue;
+                }
+                eprintln!(
                     "{LOG_PREFIX} subscribed to {} Polymarket CLOB tokens",
                     asset_ids.len()
                 );
 
                 while let Some(message) = read.next().await {
-                    match message? {
+                    let message = match message {
+                        Ok(message) => message,
+                        Err(error) => {
+                            eprintln!(
+                                "{LOG_PREFIX} market websocket read failed: {error:#}; reconnecting"
+                            );
+                            break;
+                        }
+                    };
+                    match message {
                         Message::Text(text) => {
-                            let value: Value = serde_json::from_str(&text)?;
-                            for record in parse_market_message(&value, &mut state) {
-                                println!(
+                            let records = match parse_market_text(&text, &mut state) {
+                                MarketFrameControl::Records(records) => records,
+                                MarketFrameControl::Reconnect(error) => {
+                                    eprintln!(
+                                        "{LOG_PREFIX} invalid market websocket frame: {error:#}; reconnecting"
+                                    );
+                                    break;
+                                }
+                            };
+                            for record in records {
+                                eprintln!(
                                     "{LOG_PREFIX} {} {} {} bid={:?}/{:?} ask={:?}/{:?}",
                                     record.market_slug,
                                     record.outcome,
@@ -124,9 +177,26 @@ pub async fn run_market_stream(
                                     record.ask_size
                                 );
                                 logger.append(&record)?;
+                                if let Some(token) = tokens_by_asset.get(record.asset_id.as_str()) {
+                                    if let Some(observation) = PolymarketOddsObservation::from_quote(
+                                        &record,
+                                        token,
+                                        &config.home_team,
+                                        &config.away_team,
+                                    ) {
+                                        output::write_observation(&observation)?;
+                                    }
+                                }
                             }
                         }
-                        Message::Ping(payload) => write.send(Message::Pong(payload)).await?,
+                        Message::Ping(payload) => {
+                            if let Err(error) = write.send(Message::Pong(payload)).await {
+                                eprintln!(
+                                    "{LOG_PREFIX} market websocket pong failed: {error:#}; reconnecting"
+                                );
+                                break;
+                            }
+                        }
                         Message::Close(_) => break,
                         _ => {}
                     }
@@ -211,7 +281,7 @@ fn string_field(value: &Value, names: &[&str]) -> Option<String> {
     })
 }
 
-async fn connect_ws_via_proxy(
+pub(crate) async fn connect_ws_via_proxy(
     ws_url: &str,
     proxy_url: &str,
 ) -> Result<(
@@ -267,6 +337,7 @@ mod tests {
                 question: "question".to_string(),
                 outcome: "Yes".to_string(),
                 asset_id: "101".to_string(),
+                result: None,
             }],
         );
         let value = serde_json::json!({
@@ -281,5 +352,14 @@ mod tests {
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].bid_price.as_deref(), Some("0.61"));
         assert_eq!(records[0].ask_size.as_deref(), Some("20"));
+    }
+
+    #[test]
+    fn malformed_market_frame_requests_reconnect_instead_of_terminating_provider() {
+        let mut state = QuoteState::new("event", Vec::new());
+
+        let control = parse_market_text("{not-json", &mut state);
+
+        assert!(matches!(control, MarketFrameControl::Reconnect(_)));
     }
 }
