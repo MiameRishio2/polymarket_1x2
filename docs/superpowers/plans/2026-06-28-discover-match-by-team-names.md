@@ -2,6 +2,7 @@
 change: discover-match-by-team-names
 design-doc: docs/superpowers/specs/2026-06-28-discover-match-by-team-names-design.md
 base-ref: 6674ba79ee85e58eeb8ed6f9ac6952e428c82297
+archived-with: 2026-06-29-discover-match-by-team-names
 ---
 
 # Team-Name Market and Score Observation Implementation Plan
@@ -37,6 +38,7 @@ existing OddsPortal decoder and provider-local JSONL loggers.
   comparison.
 - Run `cargo test` after Rust changes.
 
+archived-with: 2026-06-29-discover-match-by-team-names
 ---
 
 ### Task 1: Shared Match Configuration
@@ -277,6 +279,7 @@ git add config.yaml src/config.rs src/polymarket/config.rs src/oddsportal/config
 git commit -m "feat: configure one shared match target"
 ```
 
+archived-with: 2026-06-29-discover-match-by-team-names
 ---
 
 ### Task 2: Polymarket Name-Based Event Discovery
@@ -488,6 +491,7 @@ git add src/polymarket/models.rs src/polymarket/discovery.rs \
 git commit -m "feat: discover Polymarket event from team names"
 ```
 
+archived-with: 2026-06-29-discover-match-by-team-names
 ---
 
 ### Task 3: Structured Polymarket Odds Output
@@ -660,6 +664,7 @@ git add src/polymarket/output.rs src/polymarket/mod.rs \
 git commit -m "feat: emit Polymarket Yes-token odds JSON"
 ```
 
+archived-with: 2026-06-29-discover-match-by-team-names
 ---
 
 ### Task 4: Polymarket Sports Score WebSocket
@@ -879,6 +884,7 @@ git add src/polymarket/sports.rs src/polymarket/output.rs \
 git commit -m "feat: stream Polymarket score observations"
 ```
 
+archived-with: 2026-06-29-discover-match-by-team-names
 ---
 
 ### Task 5: OddsPortal Score Discovery and Models
@@ -1108,6 +1114,7 @@ git add src/oddsportal/models.rs src/oddsportal/discovery.rs \
 git commit -m "feat: model OddsPortal score observations"
 ```
 
+archived-with: 2026-06-29-discover-match-by-team-names
 ---
 
 ### Task 6: OddsPortal Concurrent Dual Polling
@@ -1280,6 +1287,7 @@ git add src/oddsportal/mod.rs src/oddsportal/output.rs src/oddsportal/score.rs \
 git commit -m "feat: poll OddsPortal odds and score each second"
 ```
 
+archived-with: 2026-06-29-discover-match-by-team-names
 ---
 
 ### Task 7: Data-Only stdout and Provider Diagnostics
@@ -1368,6 +1376,7 @@ git add src/main.rs src/polymarket src/oddsportal \
 git commit -m "refactor: separate observation data from diagnostics"
 ```
 
+archived-with: 2026-06-29-discover-match-by-team-names
 ---
 
 ### Task 8: Documentation and Full Verification

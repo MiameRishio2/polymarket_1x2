@@ -2,6 +2,8 @@
 comet_change: discover-match-by-team-names
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-29-discover-match-by-team-names
+status: final
 ---
 
 # Team-Name Market and Score Observation Design
