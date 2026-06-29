@@ -451,7 +451,7 @@ mod tests {
             Some(1),
             test_discovery(),
             || async {
-                eprintln!("test collector entered");
+                eprintln!("{LOG_PREFIX} test collector entered");
                 crate::polymarket::output::write_observation(&serde_json::json!({
                     "provider": "polymarket",
                     "type": "polymarket_odds"

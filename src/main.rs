@@ -139,6 +139,33 @@ mod tests {
 
     use anyhow::anyhow;
 
+    fn classify_observation_stdout(stdout: &str) -> Result<Vec<serde_json::Value>, String> {
+        let mut observations = Vec::new();
+        for line in stdout.lines() {
+            if is_test_harness_line(line) {
+                continue;
+            }
+            let observation = serde_json::from_str::<serde_json::Value>(line)
+                .map_err(|error| format!("unexpected non-JSON stdout line {line:?}: {error}"))?;
+            if !observation.is_object() {
+                return Err(format!(
+                    "stdout observation must be a JSON object: {observation}"
+                ));
+            }
+            observations.push(observation);
+        }
+        Ok(observations)
+    }
+
+    fn is_test_harness_line(line: &str) -> bool {
+        line.is_empty()
+            || line
+                .strip_prefix("running ")
+                .is_some_and(|rest| rest.ends_with(" test") || rest.ends_with(" tests"))
+            || (line.starts_with("test ") && line.ends_with(" ... ok"))
+            || line.starts_with("test result: ok.")
+    }
+
     #[test]
     fn crypto_provider_install_is_idempotent() {
         install_crypto_provider();
@@ -168,17 +195,21 @@ mod tests {
         assert!(output.status.success());
 
         let stdout = String::from_utf8(output.stdout).unwrap();
-        let observations = stdout
-            .lines()
-            .filter(|line| line.starts_with('{'))
-            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        let observations = classify_observation_stdout(&stdout).unwrap();
+        let mut record_types = observations
+            .iter()
+            .map(|observation| observation["type"].as_str().unwrap())
             .collect::<Vec<_>>();
-        assert_eq!(observations.len(), 4, "{stdout}");
-        assert!(
-            observations.iter().all(|observation| {
-                observation["provider"].is_string() && observation["type"].is_string()
-            }),
-            "{observations:?}"
+        record_types.sort_unstable();
+        assert_eq!(
+            record_types,
+            [
+                "oddsportal_odds",
+                "oddsportal_score",
+                "polymarket_odds",
+                "polymarket_score",
+            ],
+            "{stdout}"
         );
         for prefix in ["[polymarket]", "[oddsportal]", "[trade]"] {
             assert!(!stdout.contains(prefix), "{stdout}");
@@ -188,6 +219,11 @@ mod tests {
         for prefix in ["[polymarket]", "[oddsportal]", "[trade]"] {
             assert!(stderr.contains(prefix), "{stderr}");
         }
+    }
+
+    #[test]
+    fn stdout_classifier_rejects_plain_diagnostic() {
+        assert!(classify_observation_stdout("plain diagnostic\n").is_err());
     }
 
     #[tokio::test]
