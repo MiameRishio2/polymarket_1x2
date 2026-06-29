@@ -1,5 +1,5 @@
 # This committed configuration contains invalid credential placeholders only.
-proxy: "YOUR_PROXY_URL"
+proxy: "http://10.32.110.233:7890"
 private_key: "0xc1dead79f64ca6f3387d02d6363062f93c061ab880f4235ebb327a19c7a7654f"
 gamma_host: https://gamma-api.polymarket.com
 host: https://clob.polymarket.com
