@@ -102,18 +102,18 @@ where
         }
 
         ticker.tick().await;
-        println!("{LOG_PREFIX} starting collection pass");
+        eprintln!("{LOG_PREFIX} starting collection pass");
         let result = run_one_cycle_with(collect_odds(), collect_score()).await?;
         let status = handle_cycle_with(&result, &mut append_odds, &mut emit_odds, &mut emit_score);
         if status.odds_succeeded {
             let records = result.odds.as_ref().expect("successful odds must exist");
-            println!(
+            eprintln!(
                 "{LOG_PREFIX} collection pass succeeded with {} records",
                 records.len()
             );
         }
         if status.score_succeeded {
-            println!("{LOG_PREFIX} score collection pass succeeded");
+            eprintln!("{LOG_PREFIX} score collection pass succeeded");
         }
         completed += 1;
     }
@@ -224,7 +224,7 @@ fn append_odds_records(
 ) -> Result<()> {
     let mut logger = logging::OddsPortalLogger::new(log_path)?;
     for record in records {
-        println!(
+        eprintln!(
             "{LOG_PREFIX} {} {} {} {}",
             record.event_name, record.bookmaker_name, record.outcome, record.decimal_odds
         );
@@ -429,15 +429,15 @@ mod tests {
             .output()
             .unwrap();
         assert!(output.status.success());
-        let stdout = String::from_utf8(output.stdout).unwrap();
-        let start = stdout
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        let start = stderr
             .find("[oddsportal] starting collection pass")
             .expect("missing pass-start output");
-        let collector = stdout
+        let collector = stderr
             .find("test collector entered")
             .expect("missing collector output");
 
-        assert!(start < collector, "{stdout}");
+        assert!(start < collector, "{stderr}");
     }
 
     #[tokio::test]
@@ -451,16 +451,38 @@ mod tests {
             Some(1),
             test_discovery(),
             || async {
-                println!("test collector entered");
-                Ok(Vec::new())
+                eprintln!("test collector entered");
+                crate::polymarket::output::write_observation(&serde_json::json!({
+                    "provider": "polymarket",
+                    "type": "polymarket_odds"
+                }))
+                .unwrap();
+                crate::polymarket::output::write_observation(&serde_json::json!({
+                    "provider": "polymarket",
+                    "type": "polymarket_score"
+                }))
+                .unwrap();
+                Ok(vec![odds_fixture()])
             },
             || async { Ok(score_fixture()) },
             |_| Ok(()),
-            |_| Ok(()),
-            |_| Ok(()),
+            |_| {
+                output::write_observation(&serde_json::json!({
+                    "provider": "oddsportal",
+                    "type": "oddsportal_odds"
+                }))
+            },
+            |_| {
+                output::write_observation(&serde_json::json!({
+                    "provider": "oddsportal",
+                    "type": "oddsportal_score"
+                }))
+            },
         )
         .await
         .unwrap();
+        eprintln!("[polymarket] helper diagnostic");
+        eprintln!("[trade] helper diagnostic");
     }
 
     #[tokio::test(start_paused = true)]

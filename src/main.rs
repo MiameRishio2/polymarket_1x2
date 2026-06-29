@@ -106,7 +106,7 @@ async fn main() -> anyhow::Result<()> {
             }
 
             if let Some(runtime) = runtime.oddsportal {
-                println!(
+                eprintln!(
                     "[oddsportal] starting collector for {} vs {}",
                     runtime.config.home_team, runtime.config.away_team
                 );
@@ -132,6 +132,7 @@ fn install_crypto_provider() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::Duration;
@@ -150,6 +151,43 @@ mod tests {
     fn provider_log_prefixes_are_stable() {
         assert_eq!(polymarket::LOG_PREFIX, "[polymarket]");
         assert_eq!(oddsportal::LOG_PREFIX, "[oddsportal]");
+        assert_eq!(polymarket::live::LOG_PREFIX, "[trade]");
+    }
+
+    #[test]
+    fn observation_helper_keeps_stdout_json_and_diagnostics_on_stderr() {
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "oddsportal::tests::polling_output_helper",
+                "--nocapture",
+            ])
+            .env("ODDSPORTAL_POLLING_OUTPUT_HELPER", "1")
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let observations = stdout
+            .lines()
+            .filter(|line| line.starts_with('{'))
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(observations.len(), 4, "{stdout}");
+        assert!(
+            observations.iter().all(|observation| {
+                observation["provider"].is_string() && observation["type"].is_string()
+            }),
+            "{observations:?}"
+        );
+        for prefix in ["[polymarket]", "[oddsportal]", "[trade]"] {
+            assert!(!stdout.contains(prefix), "{stdout}");
+        }
+
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        for prefix in ["[polymarket]", "[oddsportal]", "[trade]"] {
+            assert!(stderr.contains(prefix), "{stderr}");
+        }
     }
 
     #[tokio::test]

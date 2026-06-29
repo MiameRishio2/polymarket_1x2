@@ -101,7 +101,7 @@ pub async fn run_market_stream(
     };
     if let Some(receipt) = live_receipt {
         let token = &event.tokens[0];
-        println!(
+        eprintln!(
             "{} {} fixed flow accepted for {} {} {} buy_order_id={} sell_order_id={}",
             crate::polymarket::live::LOG_PREFIX,
             SCENARIO_NAME,
