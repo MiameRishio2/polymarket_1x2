@@ -1,8 +1,8 @@
 workflow: full
 phase: build
-build_mode: null
+build_mode: subagent-driven-development
 build_pause: null
-isolation: null
+isolation: branch
 verify_mode: null
 base_ref: 8ab94dc1709da0639713af8f1dc4fa6fa445eb37
 design_doc: docs/superpowers/specs/2026-06-28-discover-match-by-team-names-design.md
