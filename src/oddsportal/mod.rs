@@ -22,11 +22,13 @@ pub async fn run_poll_loop(config: config::Config, interval: Duration) -> Result
     let odds_client = client.clone();
     let odds_event = discovery.0.clone();
     let odds_requests = discovery.1.clone();
-    let odds_config = config.clone();
     let score_client = client.clone();
     let score_event = discovery.0.clone();
     let score_url = discovery.1.score_url.clone();
     let score_config = config.clone();
+    let append_log_path = config.log_path.clone();
+    let odds_home_team = config.home_team.clone();
+    let odds_away_team = config.away_team.clone();
 
     run_poll_loop_with(
         config,
@@ -37,30 +39,25 @@ pub async fn run_poll_loop(config: config::Config, interval: Duration) -> Result
             let client = odds_client.clone();
             let event = odds_event.clone();
             let requests = odds_requests.clone();
-            let config = odds_config.clone();
-            async move {
-                let records = collect_odds(&client, &requests, &event).await?;
-                append_odds_records(&config.log_path, &records)?;
-                let output = output::OddsPortalOddsObservation::from_records(
-                    &records,
-                    &config.home_team,
-                    &config.away_team,
-                )?;
-                output::write_observation(&output)?;
-                Ok(records)
-            }
+            async move { collect_odds(&client, &requests, &event).await }
         },
         move || {
             let client = score_client.clone();
             let event = score_event.clone();
             let score_url = score_url.clone();
             let config = score_config.clone();
-            async move {
-                let record = collect_score(&client, score_url.as_deref(), &event, &config).await?;
-                output::write_observation(&record)?;
-                Ok(record)
-            }
+            async move { collect_score(&client, score_url.as_deref(), &event, &config).await }
         },
+        move |records| append_odds_records(&append_log_path, records),
+        move |records| {
+            let observation = output::OddsPortalOddsObservation::from_records(
+                records,
+                &odds_home_team,
+                &odds_away_team,
+            )?;
+            output::write_observation(&observation)
+        },
+        output::write_observation,
     )
     .await
 }
@@ -70,19 +67,25 @@ struct CycleResult {
     score: Option<output::OddsPortalScoreObservation>,
 }
 
-async fn run_poll_loop_with<Odds, OddsFuture, Score, ScoreFuture>(
+async fn run_poll_loop_with<Odds, OddsFuture, Score, ScoreFuture, AppendOdds, EmitOdds, EmitScore>(
     _config: config::Config,
     interval: Duration,
     max_iterations: Option<usize>,
     _discovery: (models::DiscoveredMatch, models::RequestMetadata),
     mut collect_odds: Odds,
     mut collect_score: Score,
+    mut append_odds: AppendOdds,
+    mut emit_odds: EmitOdds,
+    mut emit_score: EmitScore,
 ) -> Result<()>
 where
     Odds: FnMut() -> OddsFuture,
     OddsFuture: Future<Output = Result<Vec<models::OddsPortalRecord>>>,
     Score: FnMut() -> ScoreFuture,
     ScoreFuture: Future<Output = Result<output::OddsPortalScoreObservation>>,
+    AppendOdds: FnMut(&[models::OddsPortalRecord]) -> Result<()>,
+    EmitOdds: FnMut(&[models::OddsPortalRecord]) -> Result<()>,
+    EmitScore: FnMut(&output::OddsPortalScoreObservation) -> Result<()>,
 {
     let mut completed = 0;
     let mut ticker = tokio::time::interval(interval);
@@ -96,7 +99,8 @@ where
         ticker.tick().await;
         println!("{LOG_PREFIX} starting collection pass");
         let result = run_one_cycle_with(collect_odds(), collect_score()).await?;
-        if let Some(records) = result.odds {
+        handle_cycle_with(&result, &mut append_odds, &mut emit_odds, &mut emit_score);
+        if let Some(records) = &result.odds {
             println!(
                 "{LOG_PREFIX} collection pass succeeded with {} records",
                 records.len()
@@ -133,6 +137,31 @@ where
         }
     };
     Ok(CycleResult { odds, score })
+}
+
+fn handle_cycle_with<AppendOdds, EmitOdds, EmitScore>(
+    result: &CycleResult,
+    mut append_odds: AppendOdds,
+    mut emit_odds: EmitOdds,
+    mut emit_score: EmitScore,
+) where
+    AppendOdds: FnMut(&[models::OddsPortalRecord]) -> Result<()>,
+    EmitOdds: FnMut(&[models::OddsPortalRecord]) -> Result<()>,
+    EmitScore: FnMut(&output::OddsPortalScoreObservation) -> Result<()>,
+{
+    if let Some(records) = &result.odds {
+        if let Err(error) = append_odds(records) {
+            eprintln!("{LOG_PREFIX} odds append failed: {error:#}");
+        }
+        if let Err(error) = emit_odds(records) {
+            eprintln!("{LOG_PREFIX} odds output failed: {error:#}");
+        }
+    }
+    if let Some(record) = &result.score {
+        if let Err(error) = emit_score(record) {
+            eprintln!("{LOG_PREFIX} score output failed: {error:#}");
+        }
+    }
 }
 
 fn build_client(config: &config::Config) -> Result<reqwest::Client> {
@@ -334,6 +363,11 @@ fn http_request_url(url: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::Engine;
+    use flate2::write::ZlibEncoder;
+    use flate2::Compression;
+    use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+    use std::io::Write;
     use std::process::Command;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
@@ -357,6 +391,9 @@ mod tests {
                 async { Err(anyhow!("expected test failure")) }
             },
             || async { Ok(score_fixture()) },
+            |_| Ok(()),
+            |_| Ok(()),
+            |_| Ok(()),
         )
         .await
         .unwrap();
@@ -402,6 +439,9 @@ mod tests {
                 Ok(Vec::new())
             },
             || async { Ok(score_fixture()) },
+            |_| Ok(()),
+            |_| Ok(()),
+            |_| Ok(()),
         )
         .await
         .unwrap();
@@ -422,6 +462,9 @@ mod tests {
                 async { Ok(Vec::new()) }
             },
             || async { Ok(score_fixture()) },
+            |_| Ok(()),
+            |_| Ok(()),
+            |_| Ok(()),
         ));
 
         observed.await.unwrap();
@@ -443,6 +486,9 @@ mod tests {
                 async { Ok(Vec::new()) }
             },
             || async { Ok(score_fixture()) },
+            |_| Ok(()),
+            |_| Ok(()),
+            |_| Ok(()),
         ));
 
         tokio::task::yield_now().await;
@@ -461,15 +507,18 @@ mod tests {
         let score_calls = Arc::new(AtomicUsize::new(0));
         let active = Arc::new(AtomicUsize::new(0));
         let max_active = Arc::new(AtomicUsize::new(0));
-        let odds = counting_odds(
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        let odds = gated_odds(
             Arc::clone(&odds_calls),
             Arc::clone(&active),
             Arc::clone(&max_active),
+            Arc::clone(&gate),
         );
-        let scores = counting_scores(
+        let scores = gated_scores(
             Arc::clone(&score_calls),
             Arc::clone(&active),
             Arc::clone(&max_active),
+            Arc::clone(&gate),
         );
 
         let task = tokio::spawn(run_poll_loop_with(
@@ -479,12 +528,29 @@ mod tests {
             test_discovery(),
             odds,
             scores,
+            |_| Ok(()),
+            |_| Ok(()),
+            |_| Ok(()),
         ));
         tokio::task::yield_now().await;
         assert_eq!(odds_calls.load(Ordering::SeqCst), 1);
         assert_eq!(score_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(max_active.load(Ordering::SeqCst), 2);
 
+        tokio::time::advance(Duration::from_secs(5)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(odds_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(score_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(max_active.load(Ordering::SeqCst), 2);
+
+        gate.add_permits(2);
+        tokio::task::yield_now().await;
         tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(odds_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(score_calls.load(Ordering::SeqCst), 2);
+
+        gate.add_permits(2);
         tokio::task::yield_now().await;
         task.await.unwrap().unwrap();
 
@@ -494,15 +560,158 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn emits_successful_side_when_peer_request_fails() {
+    async fn odds_failure_still_emits_score() {
+        let score_outputs = AtomicUsize::new(0);
         let result = run_one_cycle_with(async { Err(anyhow!("odds failed")) }, async {
             Ok(score_fixture())
         })
         .await
         .unwrap();
 
-        assert!(result.odds.is_none());
-        assert!(result.score.is_some());
+        handle_cycle_with(
+            &result,
+            |_| unreachable!("failed odds must not be appended"),
+            |_| unreachable!("failed odds must not be emitted"),
+            |_| {
+                score_outputs.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+        );
+
+        assert_eq!(score_outputs.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn score_failure_still_appends_and_emits_odds() {
+        let odds_appends = AtomicUsize::new(0);
+        let odds_outputs = AtomicUsize::new(0);
+        let result = run_one_cycle_with(async { Ok(vec![odds_fixture()]) }, async {
+            Err(anyhow!("score failed"))
+        })
+        .await
+        .unwrap();
+
+        handle_cycle_with(
+            &result,
+            |_| {
+                odds_appends.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+            |_| {
+                odds_outputs.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+            |_| unreachable!("failed score must not be emitted"),
+        );
+
+        assert_eq!(odds_appends.load(Ordering::SeqCst), 1);
+        assert_eq!(odds_outputs.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn missing_score_url_returns_unavailable_without_http() {
+        let client = test_client();
+
+        let score = collect_score(
+            &client,
+            None,
+            &test_discovery().0,
+            &config::Config::default(),
+        )
+        .await
+        .unwrap();
+
+        assert!(!score.available);
+    }
+
+    #[tokio::test]
+    async fn score_404_returns_unavailable_after_one_attempt() {
+        let server = TestHttpServer::start(404, "").await;
+        let client = test_client();
+
+        let score = collect_score(
+            &client,
+            Some(&server.url),
+            &test_discovery().0,
+            &config::Config::default(),
+        )
+        .await
+        .unwrap();
+
+        assert!(!score.available);
+        assert_eq!(server.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn score_error_is_not_retried_within_cycle() {
+        let server = TestHttpServer::start(500, "nope").await;
+        let client = test_client();
+
+        let error = collect_score(
+            &client,
+            Some(&server.url),
+            &test_discovery().0,
+            &config::Config::default(),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().contains("returned error"));
+        assert_eq!(server.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn odds_uses_fallback_once_after_one_primary_failure() {
+        let primary = TestHttpServer::start(500, "nope").await;
+        let fallback = TestHttpServer::start(200, &encoded_odds_payload()).await;
+        let client = test_client();
+        let mut requests = test_discovery().1;
+        requests.pre_match_url = primary.url.clone();
+        requests.fallback_pre_match_url = Some(fallback.url.clone());
+
+        let records = collect_odds(&client, &requests, &test_discovery().0)
+            .await
+            .unwrap();
+
+        assert_eq!(records.len(), 3);
+        assert_eq!(primary.request_count(), 1);
+        assert_eq!(fallback.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn odds_does_not_use_fallback_after_primary_success() {
+        let primary = TestHttpServer::start(200, &encoded_odds_payload()).await;
+        let fallback = TestHttpServer::start(200, &encoded_odds_payload()).await;
+        let client = test_client();
+        let mut requests = test_discovery().1;
+        requests.pre_match_url = primary.url.clone();
+        requests.fallback_pre_match_url = Some(fallback.url.clone());
+
+        let records = collect_odds(&client, &requests, &test_discovery().0)
+            .await
+            .unwrap();
+
+        assert_eq!(records.len(), 3);
+        assert_eq!(primary.request_count(), 1);
+        assert_eq!(fallback.request_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn odds_uses_fallback_once_after_empty_primary_response() {
+        let primary = TestHttpServer::start(200, &encoded_empty_odds_payload()).await;
+        let fallback = TestHttpServer::start(200, &encoded_odds_payload()).await;
+        let client = test_client();
+        let mut requests = test_discovery().1;
+        requests.pre_match_url = primary.url.clone();
+        requests.fallback_pre_match_url = Some(fallback.url.clone());
+
+        let records = collect_odds(&client, &requests, &test_discovery().0)
+            .await
+            .unwrap();
+
+        assert_eq!(records.len(), 3);
+        assert_eq!(primary.request_count(), 1);
+        assert_eq!(fallback.request_count(), 1);
     }
 
     #[test]
@@ -534,40 +743,46 @@ mod tests {
 
     type BoxResultFuture<T> = std::pin::Pin<Box<dyn Future<Output = Result<T>> + Send + 'static>>;
 
-    fn counting_odds(
+    fn gated_odds(
         calls: Arc<AtomicUsize>,
         active: Arc<AtomicUsize>,
         max_active: Arc<AtomicUsize>,
+        gate: Arc<tokio::sync::Semaphore>,
     ) -> impl FnMut() -> BoxResultFuture<Vec<models::OddsPortalRecord>> {
         move || {
             let calls = Arc::clone(&calls);
             let active = Arc::clone(&active);
             let max_active = Arc::clone(&max_active);
+            let gate = Arc::clone(&gate);
             Box::pin(async move {
                 calls.fetch_add(1, Ordering::SeqCst);
                 let current = active.fetch_add(1, Ordering::SeqCst) + 1;
                 max_active.fetch_max(current, Ordering::SeqCst);
-                tokio::task::yield_now().await;
+                let permit = gate.acquire().await.unwrap();
+                permit.forget();
                 active.fetch_sub(1, Ordering::SeqCst);
                 Ok(vec![odds_fixture()])
             })
         }
     }
 
-    fn counting_scores(
+    fn gated_scores(
         calls: Arc<AtomicUsize>,
         active: Arc<AtomicUsize>,
         max_active: Arc<AtomicUsize>,
+        gate: Arc<tokio::sync::Semaphore>,
     ) -> impl FnMut() -> BoxResultFuture<output::OddsPortalScoreObservation> {
         move || {
             let calls = Arc::clone(&calls);
             let active = Arc::clone(&active);
             let max_active = Arc::clone(&max_active);
+            let gate = Arc::clone(&gate);
             Box::pin(async move {
                 calls.fetch_add(1, Ordering::SeqCst);
                 let current = active.fetch_add(1, Ordering::SeqCst) + 1;
                 max_active.fetch_max(current, Ordering::SeqCst);
-                tokio::task::yield_now().await;
+                let permit = gate.acquire().await.unwrap();
+                permit.forget();
                 active.fetch_sub(1, Ordering::SeqCst);
                 Ok(score_fixture())
             })
@@ -607,5 +822,88 @@ mod tests {
 
     fn score_fixture() -> output::OddsPortalScoreObservation {
         score::unavailable_score(&test_discovery().0, "South Africa", "Canada")
+    }
+
+    struct TestHttpServer {
+        url: String,
+        requests: Arc<AtomicUsize>,
+        task: tokio::task::JoinHandle<()>,
+    }
+
+    impl TestHttpServer {
+        async fn start(status: u16, body: &str) -> Self {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let requests = Arc::new(AtomicUsize::new(0));
+            let observed = Arc::clone(&requests);
+            let body = body.to_string();
+            let task = tokio::spawn(async move {
+                loop {
+                    let (stream, _) = listener.accept().await.unwrap();
+                    observed.fetch_add(1, Ordering::SeqCst);
+                    stream.readable().await.unwrap();
+                    let mut request = [0_u8; 4096];
+                    let _ = stream.try_read(&mut request);
+                    let reason = match status {
+                        200 => "OK",
+                        404 => "Not Found",
+                        500 => "Internal Server Error",
+                        _ => "Test",
+                    };
+                    let response = format!(
+                        "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let mut remaining = response.as_bytes();
+                    while !remaining.is_empty() {
+                        stream.writable().await.unwrap();
+                        match stream.try_write(remaining) {
+                            Ok(written) => remaining = &remaining[written..],
+                            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                            Err(error) => panic!("test server write failed: {error}"),
+                        }
+                    }
+                }
+            });
+            Self {
+                url: format!("http://{address}/data"),
+                requests,
+                task,
+            }
+        }
+
+        fn request_count(&self) -> usize {
+            self.requests.load(Ordering::SeqCst)
+        }
+    }
+
+    impl Drop for TestHttpServer {
+        fn drop(&mut self) {
+            self.task.abort();
+        }
+    }
+
+    fn encoded_odds_payload() -> String {
+        let json = r#"{"d":{"encodeventId":"EZmXxG15","oddsdata":{"back":{"0":{"odds":{"16":{"0":"5.50","1":"3.80","2":"1.62"}},"act":{"16":true}}}},"providersNames":{"16":"bet365"}}}"#;
+        encode_dat_payload(json)
+    }
+
+    fn encoded_empty_odds_payload() -> String {
+        encode_dat_payload(r#"{"d":{"encodeventId":"EZmXxG15","oddsdata":{"back":{}}}}"#)
+    }
+
+    fn encode_dat_payload(json: &str) -> String {
+        let encoded = utf8_percent_encode(json, NON_ALPHANUMERIC).to_string();
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(encoded.as_bytes()).unwrap();
+        base64::engine::general_purpose::STANDARD.encode(encoder.finish().unwrap())
+    }
+
+    fn test_client() -> reqwest::Client {
+        reqwest::Client::builder()
+            .http1_only()
+            .no_proxy()
+            .build()
+            .unwrap()
     }
 }

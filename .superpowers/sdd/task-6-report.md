@@ -103,3 +103,99 @@ Result: formatting applied; diff check exited 0.
 No known correctness concerns. HTTP status handling is implemented directly; existing focused
 tests cover unavailable score serialization, while the paused-time seam covers scheduler
 concurrency and independent side retention.
+
+## Follow-up quality review
+
+Three blocking test gaps were closed in commit follow-up work without changing the Task 6 runtime
+contract.
+
+### Strengthened non-overlap RED/GREEN
+
+The paused-time test now holds both cycle-1 futures behind a semaphore, advances five one-second
+ticks, and proves neither collector starts again while the first pair remains active. After
+release, exactly one later cycle runs and `max_active` remains two.
+
+RED:
+
+```text
+cargo test oddsportal::tests::cycle_starts_odds_and_score_together_without_overlap -- --exact
+```
+
+Exit 101: the new gated test referenced the not-yet-created `gated_odds` and `gated_scores`
+helpers.
+
+GREEN: the same command exited 0 with 1 passed and 0 failed.
+
+### Actual sink handling RED/GREEN
+
+Production cycle handling is now injectable at the append-only odds sink, grouped odds output
+sink, and score output sink. The collectors remain pure request futures.
+
+RED:
+
+```text
+cargo test oddsportal::tests::odds_failure_still_emits_score -- --exact
+```
+
+Exit 101: `handle_cycle_with` did not yet exist.
+
+GREEN:
+
+```text
+cargo test oddsportal::tests::odds_failure_still_emits_score -- --exact
+cargo test oddsportal::tests::score_failure_still_appends_and_emits_odds -- --exact
+```
+
+Both commands exited 0 with 1 passed and 0 failed. The first proves a score reaches its output
+sink when odds fail; the second proves odds reach both the append and grouped-output sinks when
+score fails.
+
+### HTTP policy boundary RED/GREEN
+
+Deterministic loopback HTTP tests now cover:
+
+- missing score URL returning unavailable without a request;
+- score HTTP 404 returning unavailable after one request;
+- score HTTP error receiving no retry;
+- one primary odds attempt followed by one fallback attempt after failure;
+- one primary odds attempt followed by one fallback attempt after an empty normalized batch;
+- successful primary odds preventing any fallback request.
+
+RED:
+
+```text
+cargo test oddsportal::tests::score_404_returns_unavailable_after_one_attempt -- --exact
+```
+
+Exit 101: `TestHttpServer` and `encoded_odds_payload` did not yet exist. The first loopback run
+also exposed ambient proxy inheritance (502), so the deterministic test client was explicitly
+configured with `no_proxy`.
+
+GREEN: all five exact request-policy commands exited 0; the complete OddsPortal polling module
+then passed 18 tests.
+
+### Follow-up verification
+
+Focused commands:
+
+```text
+cargo test oddsportal::tests
+cargo test oddsportal::odds::tests
+cargo test oddsportal::decoder::tests
+cargo test oddsportal::logging::tests
+cargo test oddsportal::output::tests
+cargo test oddsportal::score::tests
+```
+
+All exited 0; respectively 18, 2, 2, 1, 3, and 2 tests passed.
+
+Full suite:
+
+```text
+cargo test
+```
+
+Exit 0: 99 passed, 0 failed, 0 ignored.
+
+Follow-up concerns: none. The loopback server is test-only, binds an ephemeral localhost port,
+and bypasses ambient proxy variables for deterministic request counts.
