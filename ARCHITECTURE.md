@@ -71,11 +71,14 @@ The provider exposes an executor-independent order lifecycle with a deterministi
 The OddsPortal provider owns tournament/H2H page fetching, embedded state parsing, independent
 odds and score request discovery, compressed payload decoding, 1X2 bookmaker odds normalization,
 score normalization, and append-only odds logging. It is read-only and unauthenticated. Each
-non-overlapping polling cycle starts the odds and score HTTP requests concurrently, preserves
-either successful result when the other request fails, and waits for the next configured tick
-after the cycle finishes. With the committed one-second interval this is two requests per
-non-overlapping one-second cycle. OddsPortal advertises an approximately 15-second upstream
-refresh, so one-second requests cannot force new source data and may be rate-limited.
+non-overlapping polling tick starts one odds operation and one score operation concurrently,
+preserves either successful result when the other operation fails, and waits for both operations
+to finish before the next tick. The score operation makes no HTTP call when no score URL was
+discovered and otherwise makes one. The odds operation makes one primary HTTP call and may make
+exactly one fallback call after a failed or empty primary response. Consequently, a cycle makes
+one to three HTTP calls, normally two when a score URL exists and the primary odds request
+succeeds. OddsPortal advertises an approximately 15-second upstream refresh, so one-second
+polling cannot force new source data and may be rate-limited.
 
 ## Data Flow
 
@@ -93,9 +96,9 @@ config.yaml match.home_team + match.away_team
                  |                       |
        one football event         odds URL + score URL
                  |                       |
-        +--------+--------+       one-second cycle starts
-        |                 |        both HTTP requests
-        v                 v          concurrently
+        +--------+--------+       one-second tick starts
+        |                 |       both operations concurrently
+        v                 v           (1-3 HTTP calls)
  market WebSocket   Sports WebSocket    /       \
         |                 |            v         v
  initial/changed      matching       odds      score

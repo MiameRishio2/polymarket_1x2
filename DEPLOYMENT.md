@@ -100,10 +100,14 @@ The process starts with the repository root as its working directory and reads
 - Review `polymarket.enabled`, `oddsportal.enabled`, and the positive
   `oddsportal.poll_interval_seconds`. Enabled providers run concurrently, and
   at least one provider must be enabled.
-- The committed one-second OddsPortal interval starts one odds request and one
-  score request concurrently in each non-overlapping cycle. OddsPortal
-  advertises an approximately 15-second upstream refresh, so repeated values
-  are expected and aggressive polling may be rate-limited.
+- Each non-overlapping tick starts one OddsPortal odds operation and one score
+  operation concurrently. The score side makes zero HTTP calls when no score
+  URL was discovered, otherwise one. The odds side makes one primary call and
+  may make exactly one fallback call after a failed or empty primary response.
+  This produces one to three HTTP calls per cycle, normally two when a score
+  URL exists and primary odds succeeds. The committed interval is one second,
+  but OddsPortal advertises an approximately 15-second upstream refresh, so
+  repeated values are expected and aggressive polling may be rate-limited.
 - Keep private keys and API credentials out of source control, shell history,
   process arguments, logs, fixtures, and test output.
 

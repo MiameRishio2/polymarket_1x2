@@ -61,9 +61,11 @@ Polymarket observations, so this report does not claim successful live discovery
 both providers. The absence of `polymarket_score` is permitted when the match is not live, and an
 unavailable OddsPortal score is represented with `available: false`.
 
-OddsPortal advertises an approximately 15-second upstream refresh. The configured one-second,
-two-request non-overlapping cycle cannot force new source data and may encounter repeated values
-or rate limiting.
+OddsPortal advertises an approximately 15-second upstream refresh. Each configured
+non-overlapping one-second tick starts the odds and score operations concurrently. Depending on
+score URL availability and whether the primary odds request needs its single fallback, this is
+one to three HTTP calls per cycle and normally two. Polling cannot force new source data and may
+encounter repeated values or rate limiting.
 
 ## Self-review
 
@@ -74,3 +76,72 @@ or rate limiting.
 - The verification evidence supports documentation task 5.2 and execution of the required
   validation/smoke procedure for task 5.3, with the live external blocker stated rather than
   converted into a success claim.
+
+## Review correction verification
+
+The documentation was corrected after review to state the exact OddsPortal request behavior:
+each non-overlapping tick starts an odds operation and a score operation concurrently; the score
+operation makes zero or one HTTP call, and the odds operation makes one primary call plus at most
+one fallback after a failed or empty primary. This is one to three HTTP calls per cycle and
+normally two.
+
+### Live smoke and secret scan
+
+A further bounded read-only smoke used a temporary copy of `config.yaml`, a non-user-info
+environment proxy, and the following run command:
+
+```bash
+timeout 20s cargo run --manifest-path /root/polymarket_1x2/Cargo.toml \
+  >stdout.jsonl 2>stderr.log
+```
+
+Result: exit 124, zero stdout lines, and no JSON records to validate. Both providers logged
+startup for South Africa versus Canada, then OddsPortal reported `OddsPortal match not found for
+South Africa - Canada`. This live run remains upstream-blocked and is not a dual-provider live
+success.
+
+The known-value pattern file was built from the committed `proxy`, `private_key`, `api_key`,
+`api_secret`, and `api_passphrase` values without printing them:
+
+```bash
+awk '/^[[:space:]]*(proxy|private_key|api_key|api_secret|api_passphrase):/ {
+  value=$0
+  sub(/^[^:]*:[[:space:]]*/, "", value)
+  gsub(/^"|"$/, "", value)
+  print value
+}' config.yaml | sort -u >known-values.txt
+```
+
+Both captured streams were then scanned. These commands use exit 0 to mean clean:
+
+```bash
+if grep -F -f known-values.txt stdout.jsonl stderr.log >/dev/null; then exit 1; else exit 0; fi
+if grep -Eiq '(private_key|api_key|api_secret|api_passphrase|authorization|signature)' \
+  stdout.jsonl stderr.log; then exit 1; else exit 0; fi
+if grep -Eq '\[trade\].*(plac|cancel)' stderr.log; then exit 1; else exit 0; fi
+```
+
+Results: known-value scan exit 0, sensitive-marker scan exit 0, and trade-action scan exit 0.
+Thus the live smoke stdout and stderr contained none of the committed placeholder/credential
+values, sensitive field markers, authorization/signature markers, or placement/cancellation
+messages.
+
+### Deterministic four-observation scan
+
+Because the upstream-blocked smoke emitted no observations, the deterministic subprocess helper
+was captured:
+
+```bash
+ODDSPORTAL_POLLING_OUTPUT_HELPER=1 \
+  cargo test oddsportal::tests::polling_output_helper -- --exact --nocapture \
+  >helper.stdout 2>helper.stderr
+grep '^{' helper.stdout >observations.jsonl
+jq -e . observations.jsonl >/dev/null
+```
+
+The test, JSON extraction, and `jq` commands each exited 0. Exactly four observation lines were
+captured: `polymarket_odds`, `polymarket_score`, `oddsportal_odds`, and `oddsportal_score`.
+Applying the same known-value and sensitive-marker scans to `helper.stdout` and `helper.stderr`
+returned exit 0 for both. This deterministic observation-path evidence proves the emitted data
+records contain no checked credential keys or values; it does not substitute for dual-provider
+live success.

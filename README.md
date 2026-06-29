@@ -57,11 +57,14 @@ Stdout contains only one JSON object per line. The four observation types have t
 {"provider":"oddsportal","type":"oddsportal_score","received_at":"2026-06-28T12:00:00.000Z","source_updated_at":null,"event_id":"EZmXxG15","event_name":"South Africa - Canada","home_team":"South Africa","away_team":"Canada","available":false,"score":null,"status":null,"period":null,"elapsed":null}
 ```
 
-Polymarket uses separate market-data and public sports-score WebSockets. OddsPortal starts two
-concurrent HTTP requests—one odds request and one score request—per non-overlapping polling
-cycle. The committed interval is one second, but OddsPortal advertises an approximately
-15-second source refresh; faster requests cannot make the upstream data refresh and may be
-rate-limited.
+Polymarket uses separate market-data and public sports-score WebSockets. At every non-overlapping
+OddsPortal polling tick, one odds operation and one score operation start concurrently. The score
+operation makes zero HTTP calls if discovery found no score URL, otherwise one. The odds
+operation makes one primary call and may make exactly one fallback call if the primary fails or
+is empty. A cycle therefore makes one to three HTTP calls, normally two when a score URL exists
+and primary odds succeeds. The committed interval is one second, but OddsPortal advertises an
+approximately 15-second source refresh; faster requests cannot make the upstream data refresh
+and may be rate-limited.
 
 Provider-prefixed discovery, lifecycle, retry, reconnect, and failure diagnostics go to stderr.
 The configured `polymarket.log_path` and `oddsportal.log_path` retain the legacy detailed quote
