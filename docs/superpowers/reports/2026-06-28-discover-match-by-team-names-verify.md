@@ -175,3 +175,77 @@ Applying the same known-value and sensitive-marker scans to `helper.stdout` and 
 returned exit 0 for both. This deterministic observation-path evidence proves the emitted data
 records contain no checked credential keys or values; it does not substitute for dual-provider
 live success.
+
+## Final full OpenSpec verification
+
+This section verifies final commit `87c9201` after the whole-branch review fixes.
+
+### Summary
+
+| Dimension | Status |
+| --- | --- |
+| Completeness | PASS — 15/15 tasks complete; 14/14 requirements implemented |
+| Correctness | PASS — 31/31 scenarios mapped to implementation and focused tests |
+| Coherence | PASS — OpenSpec design, technical Design Doc, source ownership, and runtime behavior agree |
+
+### Requirement and scenario evidence
+
+- Shared configuration and runtime selection are implemented and tested in `src/config.rs`.
+  Both providers receive the same validated pair; blank/equal names, disabled providers, and
+  zero polling intervals have focused scenarios.
+- Polymarket discovery, strict soccer filtering, exact team boundaries, pagination, unique 1X2
+  selection, and Yes-token classification are implemented and tested in
+  `src/polymarket/discovery.rs`.
+- Initial and changed Polymarket Yes-token observations are implemented in
+  `src/polymarket/ws.rs` and `src/polymarket/output.rs`; quote JSONL persistence remains
+  provider-local.
+- Polymarket score filtering, heartbeat response, terminal output failures, and reconnect-local
+  transport/parser failures are implemented and tested in `src/polymarket/sports.rs` and
+  `src/polymarket/ws.rs`.
+- OddsPortal odds/score URL discovery, absent score metadata, payload decoding, strict score
+  schema validation, unavailable score output, deterministic all-bookmaker grouping, and
+  provider-local JSONL persistence are implemented and tested under `src/oddsportal/`.
+- OddsPortal cycles use one-time page discovery, finite HTTP timeouts, concurrent odds/score
+  operations, skipped missed ticks, no overlapping cycles, bounded primary/fallback policy,
+  independent peer processing, and terminal sink errors. Focused paused-time, loopback HTTP, and
+  injected-sink tests cover these scenarios in `src/oddsportal/mod.rs`.
+- The subprocess output contract is tested in `src/main.rs`: all non-harness stdout lines must be
+  complete JSON objects with exactly the four expected record types, while diagnostics retain
+  their stable stderr prefixes.
+
+### Design and proposal coherence
+
+- Provider parsing and transport remain under `src/polymarket/` and `src/oddsportal/`; root
+  `src/main.rs` remains orchestration-only.
+- There is no root observation aggregator or cross-provider comparison logic.
+- Polymarket remains WebSocket-driven; OddsPortal remains non-overlapping HTTP polling.
+- Receipt timestamps are assigned at parsing time before synchronous persistence.
+- Required JSONL/stdout sink failures are terminal after the independent peer side gets an
+  opportunity to emit.
+- Live trading remains explicitly disabled in committed configuration, and no authenticated
+  observation path or credential output was added.
+- `ARCHITECTURE.md`, `README.md`, and `DEPLOYMENT.md` match the implemented source layout,
+  request-count semantics, and stdout/stderr behavior.
+
+### Fresh final commands
+
+| Command | Result |
+| --- | --- |
+| `cargo fmt --all -- --check` | PASS |
+| `cargo test` | PASS — 115 passed, 0 failed |
+| `openspec validate discover-match-by-team-names --strict` | PASS |
+| `git diff --check` | PASS |
+| Whole-branch review after fixes | PASS — no Critical, Important, or Minor findings |
+
+### Issues
+
+- **CRITICAL:** None.
+- **WARNING:** None.
+- **SUGGESTION:** Repeat the bounded dual-provider live smoke when the South Africa–Canada event
+  is available upstream. The existing smoke remains explicitly partial and is not represented as
+  dual-provider live success.
+
+### Final assessment
+
+All required implementation, test, documentation, safety, and design-coherence checks pass. The
+change is ready for branch handling and archive, with the external live-smoke limitation recorded.
