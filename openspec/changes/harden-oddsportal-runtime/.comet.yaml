@@ -1,0 +1,17 @@
+workflow: full
+phase: build
+build_mode: executing-plans
+build_pause: null
+isolation: branch
+verify_mode: light
+base_ref: eb22ffa68175ad3d5d41ee0f9c41c782b53ef3b0
+design_doc: docs/superpowers/specs/2026-06-29-harden-oddsportal-runtime-design.md
+plan: docs/superpowers/plans/2026-06-29-harden-oddsportal-runtime.md
+verify_result: pending
+verification_report: null
+branch_status: pending
+created_at: 2026-06-29
+verified_at: null
+archived: false
+handoff_context: openspec/changes/harden-oddsportal-runtime/.comet/handoff/design-context.json
+handoff_hash: 1e3364037a0fabc8d8b6b6d0ae967a0b1fc467f681e22d615f85caa9b9cf8eb1

@@ -1,0 +1,14 @@
+{
+  "change": "harden-oddsportal-runtime",
+  "phase": "design",
+  "mode": "compact",
+  "canonical_spec": "openspec",
+  "generated_by": "comet-handoff.sh",
+  "context_hash": "1e3364037a0fabc8d8b6b6d0ae967a0b1fc467f681e22d615f85caa9b9cf8eb1",
+  "files": [
+    { "path": "openspec/changes/harden-oddsportal-runtime/proposal.md", "sha256": "a108ef97a070dfb4be61c71c1f684956dd0f24e05e41a872eb7bed42251016ed" },
+    { "path": "openspec/changes/harden-oddsportal-runtime/design.md", "sha256": "3bc88a2222f24cb72bc5e6dc05ec64adea3e1422a30326f2d197def1c0991286" },
+    { "path": "openspec/changes/harden-oddsportal-runtime/tasks.md", "sha256": "2f8ccc8931e01b31b5bbd07df0e8a1f0f56a4f58debecbca40c7082f8e2d54ac" },
+    { "path": "openspec/changes/harden-oddsportal-runtime/specs/oddsportal-js-odds/spec.md", "sha256": "a454ad8d08e9d32074165c861cb5f1193eb7889d813c9096051f9955ea811c2c" }
+  ]
+}

@@ -11,7 +11,7 @@ use std::future::Future;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Context, Result};
-use reqwest::header::{HeaderMap, HeaderValue};
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_ENCODING};
 use tokio::time::{sleep, Duration, MissedTickBehavior};
 
 pub(crate) const LOG_PREFIX: &str = "[oddsportal]";
@@ -213,6 +213,7 @@ fn build_client_with_timeouts(
         "X-Requested-With",
         HeaderValue::from_static("XMLHttpRequest"),
     );
+    headers.insert(ACCEPT_ENCODING, HeaderValue::from_static("identity"));
     let mut client = reqwest::Client::builder()
         .http1_only()
         .default_headers(headers)
@@ -749,6 +750,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn oddsportal_client_requests_identity_encoding() {
+        let server = TestHttpServer::start(200, "ok").await;
+        let client = build_client_with_timeouts(
+            &config::Config::default(),
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+        )
+        .unwrap();
+        client.get(&server.url).send().await.unwrap();
+
+        assert!(server
+            .last_request()
+            .to_ascii_lowercase()
+            .contains("accept-encoding: identity\r\n"));
+    }
+
+    #[tokio::test]
     async fn polling_returns_terminal_sink_error_after_peer_processing() {
         let score_outputs = Arc::new(AtomicUsize::new(0));
         let observed_scores = Arc::clone(&score_outputs);
@@ -1060,6 +1078,7 @@ mod tests {
     struct TestHttpServer {
         url: String,
         requests: Arc<AtomicUsize>,
+        last_request: Arc<std::sync::Mutex<String>>,
         task: tokio::task::JoinHandle<()>,
     }
 
@@ -1069,6 +1088,8 @@ mod tests {
             let address = listener.local_addr().unwrap();
             let requests = Arc::new(AtomicUsize::new(0));
             let observed = Arc::clone(&requests);
+            let last_request = Arc::new(std::sync::Mutex::new(String::new()));
+            let observed_request = Arc::clone(&last_request);
             let body = body.to_string();
             let task = tokio::spawn(async move {
                 loop {
@@ -1076,7 +1097,9 @@ mod tests {
                     observed.fetch_add(1, Ordering::SeqCst);
                     stream.readable().await.unwrap();
                     let mut request = [0_u8; 4096];
-                    let _ = stream.try_read(&mut request);
+                    let read = stream.try_read(&mut request).unwrap_or(0);
+                    *observed_request.lock().unwrap() =
+                        String::from_utf8_lossy(&request[..read]).into_owned();
                     let reason = match status {
                         200 => "OK",
                         404 => "Not Found",
@@ -1101,6 +1124,7 @@ mod tests {
             Self {
                 url: format!("http://{address}/data"),
                 requests,
+                last_request,
                 task,
             }
         }
@@ -1110,25 +1134,34 @@ mod tests {
             let address = listener.local_addr().unwrap();
             let requests = Arc::new(AtomicUsize::new(0));
             let observed = Arc::clone(&requests);
+            let last_request = Arc::new(std::sync::Mutex::new(String::new()));
+            let observed_request = Arc::clone(&last_request);
             let task = tokio::spawn(async move {
                 loop {
                     let (stream, _) = listener.accept().await.unwrap();
                     observed.fetch_add(1, Ordering::SeqCst);
                     stream.readable().await.unwrap();
                     let mut request = [0_u8; 4096];
-                    let _ = stream.try_read(&mut request);
+                    let read = stream.try_read(&mut request).unwrap_or(0);
+                    *observed_request.lock().unwrap() =
+                        String::from_utf8_lossy(&request[..read]).into_owned();
                     std::future::pending::<()>().await;
                 }
             });
             Self {
                 url: format!("http://{address}/stalled"),
                 requests,
+                last_request,
                 task,
             }
         }
 
         fn request_count(&self) -> usize {
             self.requests.load(Ordering::SeqCst)
+        }
+
+        fn last_request(&self) -> String {
+            self.last_request.lock().unwrap().clone()
         }
     }
 
