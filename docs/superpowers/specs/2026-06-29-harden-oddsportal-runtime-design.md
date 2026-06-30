@@ -2,6 +2,8 @@
 comet_change: harden-oddsportal-runtime
 role: technical-design
 canonical_spec: openspec
+archived-with: 2026-06-30-harden-oddsportal-runtime
+status: final
 ---
 
 # Harden OddsPortal Runtime Transport

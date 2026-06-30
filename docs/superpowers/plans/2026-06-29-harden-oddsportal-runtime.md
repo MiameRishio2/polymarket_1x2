@@ -2,6 +2,7 @@
 change: harden-oddsportal-runtime
 design-doc: docs/superpowers/specs/2026-06-29-harden-oddsportal-runtime-design.md
 base-ref: eb22ffa68175ad3d5d41ee0f9c41c782b53ef3b0
+archived-with: 2026-06-30-harden-oddsportal-runtime
 ---
 
 # Harden OddsPortal Runtime Implementation Plan
@@ -24,6 +25,7 @@ against the live proxied endpoint.
 - Keep the root proxy route; do not add direct fallback.
 - Preserve unrelated user changes in `config.yaml`.
 
+archived-with: 2026-06-30-harden-oddsportal-runtime
 ---
 
 ### Task 1: Identity-Encoding Transport Header

@@ -57,7 +57,11 @@ credentials or write-side betting permissions.
 The system SHALL load the OddsPortal enabled flag, tournament URL, JSONL path, and positive polling
 interval from the `oddsportal` section of `config.yaml`, SHALL receive the shared configured
 home-team and away-team pair from root configuration, and SHALL use the root proxy setting for
-HTTP requests.
+HTTP requests. Those HTTP requests SHALL ask the upstream for identity content encoding.
+
+#### Scenario: Proxy-routed identity request
+- **WHEN** the enabled OddsPortal collector issues an HTTP request
+- **THEN** the request uses the configured root proxy and sends `Accept-Encoding: identity`
 
 #### Scenario: South Africa Canada target is configured
 - **WHEN** the shared configured home team is South Africa and away team is Canada
