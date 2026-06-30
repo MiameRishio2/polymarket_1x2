@@ -66,8 +66,19 @@ and primary odds succeeds. The committed interval is one second, but OddsPortal 
 approximately 15-second source refresh; faster requests cannot make the upstream data refresh
 and may be rate-limited.
 
-Provider-prefixed discovery, lifecycle, retry, reconnect, and failure diagnostics go to stderr.
-The configured `polymarket.log_path` and `oddsportal.log_path` retain the legacy detailed quote
-records; score observations are available on stdout only.
+OddsPortal prices come from the `requestPreMatch` `/match-event/...dat` resource discovered on
+the match page. They are pre-match odds, not in-play odds; this collector does not request an
+OddsPortal live-odds feed.
+
+Discovery, lifecycle, retry, reconnect, and failure diagnostics go to stderr. Each line begins
+with an RFC 3339 UTC millisecond timestamp followed by its stable provider prefix:
+
+```text
+2026-06-30T12:34:56.789Z [oddsportal] starting collection pass
+```
+
+Stdout remains pure JSONL and carries `received_at`. The configured `polymarket.log_path` and
+`oddsportal.log_path` remain pure detailed-quote JSONL and carry `ts`; score observations are
+available on stdout only.
 
 For release deployment and process management, see [DEPLOYMENT.md](DEPLOYMENT.md).

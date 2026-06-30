@@ -10,6 +10,7 @@
 src/
 ├── main.rs                  # Binary entry point and top-level orchestration
 ├── config.rs                # Root config.yaml ownership and provider runtime construction
+├── diagnostics.rs           # Shared timestamped stderr diagnostic boundary
 ├── polymarket/              # Polymarket provider implementation
 │   ├── mod.rs
 │   ├── clob.rs              # rs-clob-client-v2 setup and order book adaptation
@@ -170,14 +171,24 @@ distinguish receipt time from an optional provider timestamp through `received_a
 `oddsportal_score` object with `available: false`; the Sports WebSocket may emit no
 `polymarket_score` record before a match is live.
 
-Human-readable diagnostics go to stderr and use three stable prefixes:
+Human-readable diagnostics go to stderr. Every line starts with its UTC
+emission time in RFC 3339 millisecond format, followed by a stable prefix:
 
 - `[polymarket]` identifies market discovery, snapshots, WebSocket lifecycle, quotes, reconnects, and provider failures.
 - `[oddsportal]` identifies polling startup, request retries, collected odds, pass status, and provider failures.
 - `[trade]` identifies the separately gated live-order lifecycle.
+- `[runtime]` identifies a task failure that cannot be attributed to a known provider.
 
-These prefixes never appear in stdout observation JSONL. The provider quote JSONL files retain
-their existing record formats without prefixes and do not duplicate the score streams.
+For example:
+
+```text
+2026-06-30T12:34:56.789Z [oddsportal] starting collection pass
+```
+
+These prefixes never appear in stdout observation JSONL. Stdout records remain
+pure JSON and carry `received_at`; provider quote JSONL files remain pure JSON,
+carry `ts`, retain their existing record formats without prefixes, and do not
+duplicate the score streams.
 
 ## External Integrations
 
@@ -186,7 +197,7 @@ their existing record formats without prefixes and do not duplicate the score st
 - Polymarket authenticated CLOB API through the same proxied client: gated GTC placement and single-order cancellation.
 - Polymarket market WebSocket: live market updates.
 - OddsPortal tournament and H2H pages: embedded state for match and request discovery.
-- OddsPortal `/match-event/...dat` endpoint: internal compressed pre-match odds payload.
+- OddsPortal `requestPreMatch` `/match-event/...dat` endpoint: internal compressed pre-match odds payload. The collector does not discover or request an in-play odds feed.
 - HTTP proxy default: `http://10.32.110.233:7890`.
 
 The normal collection path remains unauthenticated and read-only. The explicitly gated live path reads test-account credentials from `config.yaml`, separates authenticated execution from public market-data collection, validates intents before submission, requires explicit placement/cancellation response confirmation, and never logs credential values or signed payloads.

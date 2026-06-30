@@ -52,18 +52,26 @@ tail -f logs/oddsportal_odds.log
 
 Because `scripts/start.sh` intentionally redirects both streams to this one
 file, the first command shows a mixture of machine-readable observation JSONL
-from stdout and human-readable diagnostics from stderr. `[polymarket]` labels
-Polymarket discovery, WebSocket, reconnect, and terminal diagnostics;
-`[oddsportal]` labels OddsPortal polling, retry, and terminal diagnostics;
-`[trade]` is reserved for the separately gated live-order lifecycle. A
-terminal error from one provider can appear while the other provider
-continues because enabled collectors are supervised independently.
+from stdout and human-readable diagnostics from stderr. Diagnostic lines begin
+with an RFC 3339 UTC millisecond timestamp, for example:
+
+```text
+2026-06-30T12:34:56.789Z [oddsportal] starting collection pass
+```
+
+After the timestamp, `[polymarket]` labels Polymarket discovery, WebSocket,
+reconnect, and terminal diagnostics; `[oddsportal]` labels OddsPortal polling,
+retry, and terminal diagnostics; `[trade]` is reserved for the separately
+gated live-order lifecycle; `[runtime]` identifies a task failure that cannot
+be attributed to a known provider. A terminal error from one provider can
+appear while the other provider continues because enabled collectors are
+supervised independently.
 
 The other two commands follow the default detailed quote JSONL files. Their
 paths can be changed with `polymarket.log_path` and `oddsportal.log_path`.
-They retain their existing quote record formats and do not contain score
-observations. For a clean machine-readable stream in a foreground run, keep
-stdout and stderr separate:
+They retain their existing pure-JSON quote record formats, carry a `ts`
+timestamp, and do not contain score observations. For a clean machine-readable
+stream in a foreground run, keep stdout and stderr separate:
 
 ```bash
 cargo run >observations.jsonl 2>diagnostics.log
@@ -71,8 +79,11 @@ cargo run >observations.jsonl 2>diagnostics.log
 
 `observations.jsonl` then contains only the four supported observation types:
 `polymarket_odds`, `polymarket_score`, `oddsportal_odds`, and
-`oddsportal_score`. Diagnostics retain their provider prefixes only in
-`diagnostics.log`.
+`oddsportal_score`; every object carries `received_at`. Timestamped diagnostics
+retain their provider prefixes only in `diagnostics.log`.
+
+OddsPortal prices are collected from the discovered `requestPreMatch`
+`/match-event/...dat` resource. They are pre-match odds, not in-play odds.
 
 ## Stop
 
