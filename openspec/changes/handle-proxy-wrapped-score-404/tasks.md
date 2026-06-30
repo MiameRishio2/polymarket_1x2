@@ -10,4 +10,4 @@
 
 ## 3. Verification
 
-- [ ] 3.1 Run formatting, focused tests, the full Rust test suite, and a release build.
+- [x] 3.1 Run formatting, focused tests, the full Rust test suite, and a release build.
