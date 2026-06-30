@@ -1,4 +1,9 @@
-## ADDED Requirements
+## Purpose
+
+Define provider-specific source ownership and the repository guidance that keeps those boundaries
+clear for contributors and coding agents.
+
+## Requirements
 
 ### Requirement: Provider source boundaries
 The system SHALL keep provider-specific source code under provider-specific directories below `src/`.
