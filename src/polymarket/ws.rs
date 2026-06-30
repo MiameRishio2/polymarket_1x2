@@ -78,7 +78,7 @@ pub async fn run_market_stream(
     for record in
         crate::polymarket::clob::load_initial_orderbooks(&clob_client, &event, &mut state).await?
     {
-        eprintln!(
+        crate::diagnostics::write(format_args!(
             "{LOG_PREFIX} {} {} {} bid={:?}/{:?} ask={:?}/{:?}",
             record.market_slug,
             record.outcome,
@@ -87,7 +87,7 @@ pub async fn run_market_stream(
             record.bid_size,
             record.ask_price,
             record.ask_size
-        );
+        ));
         logger.append(&record)?;
         if let Some(token) = tokens_by_asset.get(record.asset_id.as_str()) {
             if let Some(observation) = PolymarketOddsObservation::from_quote(
@@ -104,16 +104,16 @@ pub async fn run_market_stream(
     let live_receipt = match run_fixed_live_flow(live.as_ref(), &event, &state).await {
         Ok(receipt) => receipt,
         Err(error) => {
-            eprintln!(
+            crate::diagnostics::write(format_args!(
                 "{} fixed flow failed: {error:#}",
                 crate::polymarket::live::LOG_PREFIX
-            );
+            ));
             return Err(error);
         }
     };
     if let Some(receipt) = live_receipt {
         let token = &event.tokens[0];
-        eprintln!(
+        crate::diagnostics::write(format_args!(
             "{} {} fixed flow accepted for {} {} {} buy_order_id={} sell_order_id={}",
             crate::polymarket::live::LOG_PREFIX,
             SCENARIO_NAME,
@@ -122,35 +122,35 @@ pub async fn run_market_stream(
             token.asset_id,
             receipt.buy_order_id,
             receipt.sell_order_id
-        );
+        ));
     }
 
     let payload = Message::Text(subscription_payload(&asset_ids).to_string().into());
 
     loop {
-        eprintln!("{LOG_PREFIX} connecting market websocket");
+        crate::diagnostics::write(format_args!("{LOG_PREFIX} connecting market websocket"));
         match connect_ws_via_proxy(&config.market_ws_url, &config.proxy_url).await {
             Ok((ws, _response)) => {
                 let (mut write, mut read) = ws.split();
                 if let Err(error) = write.send(payload.clone()).await {
-                    eprintln!(
+                    crate::diagnostics::write(format_args!(
                         "{LOG_PREFIX} market websocket subscription failed: {error:#}; reconnecting"
-                    );
+                    ));
                     sleep(Duration::from_secs(3)).await;
                     continue;
                 }
-                eprintln!(
+                crate::diagnostics::write(format_args!(
                     "{LOG_PREFIX} subscribed to {} Polymarket CLOB tokens",
                     asset_ids.len()
-                );
+                ));
 
                 while let Some(message) = read.next().await {
                     let message = match message {
                         Ok(message) => message,
                         Err(error) => {
-                            eprintln!(
+                            crate::diagnostics::write(format_args!(
                                 "{LOG_PREFIX} market websocket read failed: {error:#}; reconnecting"
-                            );
+                            ));
                             break;
                         }
                     };
@@ -159,14 +159,14 @@ pub async fn run_market_stream(
                             let records = match parse_market_text(&text, &mut state) {
                                 MarketFrameControl::Records(records) => records,
                                 MarketFrameControl::Reconnect(error) => {
-                                    eprintln!(
+                                    crate::diagnostics::write(format_args!(
                                         "{LOG_PREFIX} invalid market websocket frame: {error:#}; reconnecting"
-                                    );
+                                    ));
                                     break;
                                 }
                             };
                             for record in records {
-                                eprintln!(
+                                crate::diagnostics::write(format_args!(
                                     "{LOG_PREFIX} {} {} {} bid={:?}/{:?} ask={:?}/{:?}",
                                     record.market_slug,
                                     record.outcome,
@@ -175,7 +175,7 @@ pub async fn run_market_stream(
                                     record.bid_size,
                                     record.ask_price,
                                     record.ask_size
-                                );
+                                ));
                                 logger.append(&record)?;
                                 if let Some(token) = tokens_by_asset.get(record.asset_id.as_str()) {
                                     if let Some(observation) = PolymarketOddsObservation::from_quote(
@@ -191,9 +191,9 @@ pub async fn run_market_stream(
                         }
                         Message::Ping(payload) => {
                             if let Err(error) = write.send(Message::Pong(payload)).await {
-                                eprintln!(
+                                crate::diagnostics::write(format_args!(
                                     "{LOG_PREFIX} market websocket pong failed: {error:#}; reconnecting"
-                                );
+                                ));
                                 break;
                             }
                         }
@@ -201,11 +201,13 @@ pub async fn run_market_stream(
                         _ => {}
                     }
                 }
-                eprintln!("{LOG_PREFIX} market websocket disconnected; reconnecting");
+                crate::diagnostics::write(format_args!(
+                    "{LOG_PREFIX} market websocket disconnected; reconnecting"
+                ));
             }
-            Err(error) => {
-                eprintln!("{LOG_PREFIX} websocket connection failed: {error:#}; reconnecting")
-            }
+            Err(error) => crate::diagnostics::write(format_args!(
+                "{LOG_PREFIX} websocket connection failed: {error:#}; reconnecting"
+            )),
         }
 
         sleep(Duration::from_secs(3)).await;

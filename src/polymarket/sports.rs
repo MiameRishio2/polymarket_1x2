@@ -95,20 +95,24 @@ where
     match parse_sports_message(text, event, config) {
         Ok(SportsAction::Pong) => {
             if let Err(error) = write.send(Message::Text("pong".into())).await {
-                eprintln!("{LOG_PREFIX} sports websocket send failed: {error}");
+                crate::diagnostics::write(format_args!(
+                    "{LOG_PREFIX} sports websocket send failed: {error}"
+                ));
                 return Ok(StreamControl::Reconnect);
             }
         }
         Ok(SportsAction::Observation(record)) => emit(&record)?,
         Ok(SportsAction::Ignore) => {}
-        Err(error) => eprintln!("{LOG_PREFIX} invalid sports update: {error:#}"),
+        Err(error) => crate::diagnostics::write(format_args!(
+            "{LOG_PREFIX} invalid sports update: {error:#}"
+        )),
     }
     Ok(StreamControl::Continue)
 }
 
 pub async fn run_score_stream(config: Config, event: DiscoveredEvent) -> Result<()> {
     loop {
-        eprintln!("{LOG_PREFIX} connecting sports websocket");
+        crate::diagnostics::write(format_args!("{LOG_PREFIX} connecting sports websocket"));
         match connect_ws_via_proxy(&config.sports_ws_url, &config.proxy_url).await {
             Ok((ws, _response)) => {
                 let (mut write, mut read) = ws.split();
@@ -127,16 +131,20 @@ pub async fn run_score_stream(config: Config, event: DiscoveredEvent) -> Result<
                         Ok(Message::Close(_)) => break,
                         Ok(_) => {}
                         Err(error) => {
-                            eprintln!("{LOG_PREFIX} sports websocket read failed: {error:#}");
+                            crate::diagnostics::write(format_args!(
+                                "{LOG_PREFIX} sports websocket read failed: {error:#}"
+                            ));
                             break;
                         }
                     }
                 }
-                eprintln!("{LOG_PREFIX} sports websocket disconnected; reconnecting");
+                crate::diagnostics::write(format_args!(
+                    "{LOG_PREFIX} sports websocket disconnected; reconnecting"
+                ));
             }
-            Err(error) => {
-                eprintln!("{LOG_PREFIX} sports websocket failed: {error:#}; reconnecting")
-            }
+            Err(error) => crate::diagnostics::write(format_args!(
+                "{LOG_PREFIX} sports websocket failed: {error:#}; reconnecting"
+            )),
         }
         sleep(Duration::from_secs(3)).await;
     }

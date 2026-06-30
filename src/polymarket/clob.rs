@@ -49,10 +49,10 @@ pub async fn load_initial_orderbooks(
                 }
             }
             Err(error) => {
-                eprintln!(
+                crate::diagnostics::write(format_args!(
                     "{LOG_PREFIX} rs-clob-client-v2 orderbook unavailable for {} {}: {}",
                     token.market_slug, token.outcome, error
-                );
+                ));
             }
         }
     }

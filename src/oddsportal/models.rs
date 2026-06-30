@@ -51,9 +51,11 @@ mod tests {
             source_url: "https://www.oddsportal.com/match-event/test.dat".to_string(),
         };
 
-        let json = serde_json::to_string(&record).unwrap();
+        let json = serde_json::to_value(&record).unwrap();
 
-        assert!(json.contains("\"provider\":\"oddsportal\""));
-        assert!(json.contains("\"outcome\":\"X\""));
+        assert_eq!(json["provider"], "oddsportal");
+        assert_eq!(json["outcome"], "X");
+        assert_eq!(json["ts"], "2026-06-26T12:00:00Z");
+        chrono::DateTime::parse_from_rfc3339(json["ts"].as_str().unwrap()).unwrap();
     }
 }

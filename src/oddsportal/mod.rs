@@ -105,18 +105,18 @@ where
         }
 
         ticker.tick().await;
-        eprintln!("{LOG_PREFIX} starting collection pass");
+        crate::diagnostics::write(format_args!("{LOG_PREFIX} starting collection pass"));
         let result = run_one_cycle_with(collect_odds(), collect_score()).await?;
         let status = handle_cycle_with(&result, &mut append_odds, &mut emit_odds, &mut emit_score)?;
         if status.odds_succeeded {
             let records = result.odds.as_ref().expect("successful odds must exist");
-            eprintln!(
+            crate::diagnostics::write(format_args!(
                 "{LOG_PREFIX} collection pass succeeded with {} records",
                 records.len()
-            );
+            ));
         }
         if status.score_succeeded {
-            eprintln!("{LOG_PREFIX} score collection pass succeeded");
+            crate::diagnostics::write(format_args!("{LOG_PREFIX} score collection pass succeeded"));
         }
         completed += 1;
     }
@@ -134,14 +134,18 @@ where
     let odds = match odds_result {
         Ok(records) => Some(records),
         Err(error) => {
-            eprintln!("{LOG_PREFIX} odds collection failed: {error:#}");
+            crate::diagnostics::write(format_args!(
+                "{LOG_PREFIX} odds collection failed: {error:#}"
+            ));
             None
         }
     };
     let score = match score_result {
         Ok(record) => Some(record),
         Err(error) => {
-            eprintln!("{LOG_PREFIX} score collection failed: {error:#}");
+            crate::diagnostics::write(format_args!(
+                "{LOG_PREFIX} score collection failed: {error:#}"
+            ));
             None
         }
     };
@@ -166,12 +170,16 @@ where
             Ok(()) => match emit_odds(records) {
                 Ok(()) => odds_succeeded = true,
                 Err(error) => {
-                    eprintln!("{LOG_PREFIX} odds output failed: {error:#}");
+                    crate::diagnostics::write(format_args!(
+                        "{LOG_PREFIX} odds output failed: {error:#}"
+                    ));
                     first_error = Some(error);
                 }
             },
             Err(error) => {
-                eprintln!("{LOG_PREFIX} odds append failed: {error:#}");
+                crate::diagnostics::write(format_args!(
+                    "{LOG_PREFIX} odds append failed: {error:#}"
+                ));
                 first_error = Some(error);
             }
         }
@@ -182,7 +190,9 @@ where
         match emit_score(record) {
             Ok(()) => score_succeeded = true,
             Err(error) => {
-                eprintln!("{LOG_PREFIX} score output failed: {error:#}");
+                crate::diagnostics::write(format_args!(
+                    "{LOG_PREFIX} score output failed: {error:#}"
+                ));
                 if first_error.is_none() {
                     first_error = Some(error);
                 }
@@ -256,10 +266,10 @@ fn append_odds_records(
 ) -> Result<()> {
     let mut logger = logging::OddsPortalLogger::new(log_path)?;
     for record in records {
-        eprintln!(
+        crate::diagnostics::write(format_args!(
             "{LOG_PREFIX} {} {} {} {}",
             record.event_name, record.bookmaker_name, record.outcome, record.decimal_odds
-        );
+        ));
         logger.append(record)?;
     }
     Ok(())
@@ -389,7 +399,9 @@ async fn get_text_with_retries(client: &reqwest::Client, url: &str, label: &str)
 
         if attempt < 3 {
             if let Some(error) = &last_error {
-                eprintln!("{LOG_PREFIX} {label} attempt {attempt} failed; retrying: {error:#}");
+                crate::diagnostics::write(format_args!(
+                    "{LOG_PREFIX} {label} attempt {attempt} failed; retrying: {error:#}"
+                ));
             }
             sleep(Duration::from_millis(500 * attempt)).await;
         }
@@ -491,15 +503,17 @@ mod tests {
             Some(1),
             test_discovery(),
             || async {
-                eprintln!("{LOG_PREFIX} test collector entered");
+                crate::diagnostics::write(format_args!("{LOG_PREFIX} test collector entered"));
                 crate::polymarket::output::write_observation(&serde_json::json!({
                     "provider": "polymarket",
-                    "type": "polymarket_odds"
+                    "type": "polymarket_odds",
+                    "received_at": "2026-06-30T12:00:00.000Z"
                 }))
                 .unwrap();
                 crate::polymarket::output::write_observation(&serde_json::json!({
                     "provider": "polymarket",
-                    "type": "polymarket_score"
+                    "type": "polymarket_score",
+                    "received_at": "2026-06-30T12:00:00.000Z"
                 }))
                 .unwrap();
                 Ok(vec![odds_fixture()])
@@ -509,20 +523,22 @@ mod tests {
             |_| {
                 output::write_observation(&serde_json::json!({
                     "provider": "oddsportal",
-                    "type": "oddsportal_odds"
+                    "type": "oddsportal_odds",
+                    "received_at": "2026-06-30T12:00:00.000Z"
                 }))
             },
             |_| {
                 output::write_observation(&serde_json::json!({
                     "provider": "oddsportal",
-                    "type": "oddsportal_score"
+                    "type": "oddsportal_score",
+                    "received_at": "2026-06-30T12:00:00.000Z"
                 }))
             },
         )
         .await
         .unwrap();
-        eprintln!("[polymarket] helper diagnostic");
-        eprintln!("[trade] helper diagnostic");
+        crate::diagnostics::write(format_args!("[polymarket] helper diagnostic"));
+        crate::diagnostics::write(format_args!("[trade] helper diagnostic"));
     }
 
     #[tokio::test(start_paused = true)]

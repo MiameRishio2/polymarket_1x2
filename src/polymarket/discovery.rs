@@ -28,11 +28,11 @@ pub async fn discover_event(config: &Config) -> Result<DiscoveredEvent> {
     })
     .await?;
 
-    eprintln!(
+    crate::diagnostics::write(format_args!(
         "{LOG_PREFIX} discovered event {} with {} tokens",
         event.slug,
         event.tokens.len()
-    );
+    ));
     Ok(event)
 }
 

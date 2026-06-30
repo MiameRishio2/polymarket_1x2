@@ -1,4 +1,5 @@
 mod config;
+mod diagnostics;
 mod oddsportal;
 mod polymarket;
 
@@ -57,13 +58,13 @@ async fn supervise(
             Ok((task_id, (provider, Ok(())))) => {
                 providers.remove(&task_id);
                 let error = format!("{} provider stopped unexpectedly", provider.prefix());
-                eprintln!("{error}");
+                diagnostics::write(format_args!("{error}"));
                 terminal_errors.push(error);
             }
             Ok((task_id, (provider, Err(error)))) => {
                 providers.remove(&task_id);
                 let error = format!("{} provider failed: {error:#}", provider.prefix());
-                eprintln!("{error}");
+                diagnostics::write(format_args!("{error}"));
                 terminal_errors.push(error);
             }
             Err(error) => {
@@ -72,7 +73,7 @@ async fn supervise(
                     .map(Provider::prefix)
                     .unwrap_or("[runtime]");
                 let error = format!("{prefix} provider task failed: {error}");
-                eprintln!("{error}");
+                diagnostics::write(format_args!("{error}"));
                 terminal_errors.push(error);
             }
         }
@@ -93,10 +94,10 @@ async fn main() -> anyhow::Result<()> {
             let mut providers = HashMap::new();
 
             if let Some(runtime) = runtime.polymarket {
-                eprintln!(
+                diagnostics::write(format_args!(
                     "[polymarket] starting collector for {} vs {}",
                     runtime.config.home_team, runtime.config.away_team
-                );
+                ));
                 spawn_local_provider(
                     &mut tasks,
                     &mut providers,
@@ -106,10 +107,10 @@ async fn main() -> anyhow::Result<()> {
             }
 
             if let Some(runtime) = runtime.oddsportal {
-                eprintln!(
+                diagnostics::write(format_args!(
                     "[oddsportal] starting collector for {} vs {}",
                     runtime.config.home_team, runtime.config.away_team
-                );
+                ));
                 spawn_local_provider(
                     &mut tasks,
                     &mut providers,
@@ -132,6 +133,7 @@ fn install_crypto_provider() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::DateTime;
     use std::process::Command;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
@@ -164,6 +166,21 @@ mod tests {
                 .is_some_and(|rest| rest.ends_with(" test") || rest.ends_with(" tests"))
             || (line.starts_with("test ") && line.ends_with(" ... ok"))
             || line.starts_with("test result: ok.")
+    }
+
+    fn assert_timestamped_diagnostics(stderr: &str) {
+        for line in stderr.lines().filter(|line| !line.is_empty()) {
+            let (timestamp, diagnostic) = line
+                .split_once(' ')
+                .expect("diagnostic line must contain timestamp and message");
+            DateTime::parse_from_rfc3339(timestamp).expect("diagnostic timestamp must be RFC 3339");
+            assert!(
+                ["[polymarket]", "[oddsportal]", "[trade]", "[runtime]"]
+                    .iter()
+                    .any(|prefix| diagnostic.starts_with(prefix)),
+                "unexpected diagnostic body: {diagnostic}"
+            );
+        }
     }
 
     #[test]
@@ -211,11 +228,18 @@ mod tests {
             ],
             "{stdout}"
         );
+        for observation in &observations {
+            let received_at = observation["received_at"]
+                .as_str()
+                .expect("observation must contain received_at");
+            DateTime::parse_from_rfc3339(received_at).expect("received_at must be RFC 3339");
+        }
         for prefix in ["[polymarket]", "[oddsportal]", "[trade]"] {
             assert!(!stdout.contains(prefix), "{stdout}");
         }
 
         let stderr = String::from_utf8(output.stderr).unwrap();
+        assert_timestamped_diagnostics(&stderr);
         for prefix in ["[polymarket]", "[oddsportal]", "[trade]"] {
             assert!(stderr.contains(prefix), "{stderr}");
         }
