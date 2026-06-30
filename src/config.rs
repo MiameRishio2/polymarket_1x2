@@ -226,7 +226,7 @@ trade:
     }
 
     #[test]
-    fn committed_config_targets_south_africa_canada_read_only() {
+    fn committed_config_enables_providers_and_stays_read_only() {
         let runtime = FileConfig::parse(include_str!("../config.yaml"))
             .unwrap()
             .into_runtime()
@@ -234,10 +234,6 @@ trade:
         let polymarket = runtime.polymarket.unwrap();
         let oddsportal = runtime.oddsportal.unwrap();
 
-        assert_eq!(polymarket.config.home_team, "South Africa");
-        assert_eq!(polymarket.config.away_team, "Canada");
-        assert_eq!(oddsportal.config.home_team, "South Africa");
-        assert_eq!(oddsportal.config.away_team, "Canada");
         assert_eq!(oddsportal.poll_interval, Duration::from_secs(1));
         assert!(polymarket.live.is_none());
     }

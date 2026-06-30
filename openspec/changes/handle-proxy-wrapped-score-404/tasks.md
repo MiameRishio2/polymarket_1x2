@@ -5,7 +5,7 @@
 
 ## 2. Configuration Safety Test
 
-- [ ] 2.1 Remove mutable match-value assertions from the committed configuration safety test
+- [x] 2.1 Remove mutable match-value assertions from the committed configuration safety test
   while preserving provider, interval, and read-only assertions.
 
 ## 3. Verification
