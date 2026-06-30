@@ -337,6 +337,14 @@ async fn collect_score(
         .text()
         .await
         .context("failed to read OddsPortal score response")?;
+    let trimmed = body.trim();
+    if trimmed.starts_with("URL:") && trimmed.ends_with("Status: 404") {
+        return Ok(score::unavailable_score(
+            event,
+            &config.home_team,
+            &config.away_team,
+        ));
+    }
     let decoded = decoder::decode_dat_payload(&body)
         .with_context(|| format!("failed to decode OddsPortal score response for {url}"))?;
     score::parse_score_payload(&decoded, event, &config.home_team, &config.away_team)
@@ -856,6 +864,28 @@ mod tests {
     #[tokio::test]
     async fn score_404_returns_unavailable_after_one_attempt() {
         let server = TestHttpServer::start(404, "").await;
+        let client = test_client();
+
+        let score = collect_score(
+            &client,
+            Some(&server.url),
+            &test_discovery().0,
+            &config::Config::default(),
+        )
+        .await
+        .unwrap();
+
+        assert!(!score.available);
+        assert_eq!(server.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn proxy_wrapped_score_404_returns_unavailable_without_decoding() {
+        let server = TestHttpServer::start(
+            200,
+            "URL:/feed/postmatch-score/1-EZmXxG15-yj93f.dat?_= Status: 404",
+        )
+        .await;
         let client = test_client();
 
         let score = collect_score(
