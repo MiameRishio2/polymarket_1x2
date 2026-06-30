@@ -5,4 +5,4 @@
 
 ## 2. Verification
 
-- [ ] 2.1 Run formatting, the full test suite, release build, and live runtime verification.
+- [x] 2.1 Run formatting, the full test suite, release build, and live runtime verification.

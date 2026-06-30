@@ -36,18 +36,18 @@ against the live proxied endpoint.
 - Consumes: `build_client_with_timeouts(config, connect_timeout, request_timeout)`.
 - Produces: an OddsPortal client whose requests contain `Accept-Encoding: identity`.
 
-- [ ] **Step 1: Add a failing wire-header test**
+- [x] **Step 1: Add a failing wire-header test**
 
 Build the real client, issue a request to `TestHttpServer`, and assert that the captured
 case-insensitive request text contains `accept-encoding: identity\r\n`.
 
-- [ ] **Step 2: Verify the test fails**
+- [x] **Step 2: Verify the test fails**
 
 Run: `cargo test oddsportal_client_requests_identity_encoding -- --nocapture`
 
 Expected: FAIL because the header is absent.
 
-- [ ] **Step 3: Add the default header**
+- [x] **Step 3: Add the default header**
 
 Import `reqwest::header::ACCEPT_ENCODING` and insert:
 
@@ -55,13 +55,13 @@ Import `reqwest::header::ACCEPT_ENCODING` and insert:
 headers.insert(ACCEPT_ENCODING, HeaderValue::from_static("identity"));
 ```
 
-- [ ] **Step 4: Verify the focused tests pass**
+- [x] **Step 4: Verify the focused tests pass**
 
 Run: `cargo test oddsportal_client_requests_identity_encoding -- --nocapture`
 
 Expected: one test passes.
 
-- [ ] **Step 5: Commit the transport fix**
+- [x] **Step 5: Commit the transport fix**
 
 Stage only `src/oddsportal/mod.rs` and the current change artifacts, excluding the unrelated
 Brazil/Japan hunk in `config.yaml`.
@@ -76,25 +76,25 @@ Brazil/Japan hunk in `config.yaml`.
 - Consumes: the release binary and configured HTTP proxy.
 - Produces: repeatable test/build evidence and a bounded live-runtime result.
 
-- [ ] **Step 1: Format and run all tests**
+- [x] **Step 1: Format and run all tests**
 
 Run: `cargo fmt -- --check` and `cargo test`.
 
 Expected: formatting succeeds and all tests pass.
 
-- [ ] **Step 2: Build release**
+- [x] **Step 2: Build release**
 
 Run: `./scripts/build.sh`.
 
 Expected: `target/release/polymarket-1x2` builds successfully.
 
-- [ ] **Step 3: Run live verification**
+- [x] **Step 3: Run live verification**
 
 Run the release binary under a bounded timeout with network access and inspect fresh output for
 successful OddsPortal odds collection, while separately recording external proxy/upstream
 transients.
 
-- [ ] **Step 4: Record verification and commit**
+- [x] **Step 4: Record verification and commit**
 
 Write the verification report, complete the OpenSpec task checklist, archive the change, and
 commit only task-owned files.
