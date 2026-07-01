@@ -82,8 +82,10 @@ cargo run >observations.jsonl 2>diagnostics.log
 `oddsportal_score`; every object carries `received_at`. Timestamped diagnostics
 retain their provider prefixes only in `diagnostics.log`.
 
-OddsPortal prices are collected from the discovered `requestPreMatch`
-`/match-event/...dat` resource. They are pre-match odds, not in-play odds.
+OddsPortal prices are collected only from the target match page's
+`requestLive` `/feed/live-event/...dat` resource. Before kickoff, after
+completion, or whenever that feed is unavailable, no `oddsportal_odds` record
+is emitted. The collector never requests or falls back to `requestPreMatch`.
 
 ## Stop
 
@@ -113,11 +115,11 @@ The process starts with the repository root as its working directory and reads
   at least one provider must be enabled.
 - Each non-overlapping tick starts one OddsPortal odds operation and one score
   operation concurrently. The score side makes zero HTTP calls when no score
-  URL was discovered, otherwise one. The odds side makes one primary call and
-  may make exactly one fallback call after a failed or empty primary response.
-  This produces one to three HTTP calls per cycle, normally two when a score
-  URL exists and primary odds succeeds. The committed interval is one second,
-  but OddsPortal advertises an approximately 15-second upstream refresh, so
+  URL was discovered, otherwise one. The odds side always refreshes the target
+  H2H page and makes one additional `requestLive` call only while the match is
+  live. This produces one to three HTTP calls in a normal cycle. H2H retries
+  can add up to two calls after failures. The committed interval is one
+  second, while the observed live feed advertises a ten-second refresh, so
   repeated values are expected and aggressive polling may be rate-limited.
 - Keep private keys and API credentials out of source control, shell history,
   process arguments, logs, fixtures, and test output.

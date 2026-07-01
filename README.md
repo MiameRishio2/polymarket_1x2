@@ -60,15 +60,17 @@ Stdout contains only one JSON object per line. The four observation types have t
 Polymarket uses separate market-data and public sports-score WebSockets. At every non-overlapping
 OddsPortal polling tick, one odds operation and one score operation start concurrently. The score
 operation makes zero HTTP calls if discovery found no score URL, otherwise one. The odds
-operation makes one primary call and may make exactly one fallback call if the primary fails or
-is empty. A cycle therefore makes one to three HTTP calls, normally two when a score URL exists
-and primary odds succeeds. The committed interval is one second, but OddsPortal advertises an
-approximately 15-second source refresh; faster requests cannot make the upstream data refresh
-and may be rate-limited.
+operation always refreshes the target H2H page and makes one additional live-feed call only when
+the page says the match is live. A normal cycle therefore makes one to three HTTP calls: one H2H
+request, an optional live-odds request, and an optional score request. H2H retries can add up to
+two calls after failures. The committed interval is one second, while the observed
+`requestLive` refresh is ten seconds; repeated values are expected and aggressive polling may be
+rate-limited.
 
-OddsPortal prices come from the `requestPreMatch` `/match-event/...dat` resource discovered on
-the match page. They are pre-match odds, not in-play odds; this collector does not request an
-OddsPortal live-odds feed.
+OddsPortal prices come only from the target match page's `requestLive`
+`/feed/live-event/...dat` resource. Before kickoff, after completion, or whenever that feed is
+unavailable, no `oddsportal_odds` record is emitted. The collector never requests or falls back
+to `requestPreMatch`.
 
 Discovery, lifecycle, retry, reconnect, and failure diagnostics go to stderr. Each line begins
 with an RFC 3339 UTC millisecond timestamp followed by its stable provider prefix:

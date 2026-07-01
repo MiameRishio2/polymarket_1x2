@@ -75,11 +75,16 @@ score normalization, and append-only odds logging. It is read-only and unauthent
 non-overlapping polling tick starts one odds operation and one score operation concurrently,
 preserves either successful result when the other operation fails, and waits for both operations
 to finish before the next tick. The score operation makes no HTTP call when no score URL was
-discovered and otherwise makes one. The odds operation makes one primary HTTP call and may make
-exactly one fallback call after a failed or empty primary response. Consequently, a cycle makes
-one to three HTTP calls, normally two when a score URL exists and the primary odds request
-succeeds. OddsPortal advertises an approximately 15-second upstream refresh, so one-second
-polling cannot force new source data and may be rate-limited.
+discovered and otherwise makes one. The odds operation refreshes the H2H page every tick, then
+requests the page's `requestLive` feed with the H2H URL as `Referer` only while the match is live.
+A normal cycle therefore makes one to three HTTP calls: one H2H request, one optional live-feed
+request, and one optional score request. H2H retries can add up to two calls after failures. The
+observed live feed advertises a ten-second refresh, so one-second polling cannot force new source
+data and may be rate-limited.
+
+Non-live state, a missing `requestLive`, and live-feed 404 responses are normal unavailability.
+They emit no `oddsportal_odds` observation and append no detailed odds records. The collector
+never requests or falls back to `requestPreMatch`.
 
 ## Data Flow
 
@@ -197,7 +202,7 @@ duplicate the score streams.
 - Polymarket authenticated CLOB API through the same proxied client: gated GTC placement and single-order cancellation.
 - Polymarket market WebSocket: live market updates.
 - OddsPortal tournament and H2H pages: embedded state for match and request discovery.
-- OddsPortal `requestPreMatch` `/match-event/...dat` endpoint: internal compressed pre-match odds payload. The collector does not discover or request an in-play odds feed.
+- OddsPortal `requestLive` `/feed/live-event/...dat` endpoint: encrypted in-play per-bookmaker 1X2 odds payload. The public H2H page is sent as `Referer`; `requestPreMatch` is never used.
 - HTTP proxy default: `http://10.32.110.233:7890`.
 
 The normal collection path remains unauthenticated and read-only. The explicitly gated live path reads test-account credentials from `config.yaml`, separates authenticated execution from public market-data collection, validates intents before submission, requires explicit placement/cancellation response confirmation, and never logs credential values or signed payloads.
