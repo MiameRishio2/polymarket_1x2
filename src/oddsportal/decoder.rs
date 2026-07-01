@@ -156,6 +156,22 @@ mod tests {
         assert_eq!(decoded["d"]["oddsdata"]["back"], serde_json::json!({}));
     }
 
+    #[test]
+    fn decodes_encrypted_live_event_fixture() {
+        let encoded = include_str!("../../tests/fixtures/oddsportal_live_event.dat");
+
+        let decoded = decode_dat_payload(encoded).unwrap();
+
+        assert_eq!(
+            decoded["d"]["oddsdata"]["back"]["E-1-2-0-0-0"]["scopeId"],
+            2
+        );
+        assert_eq!(
+            decoded["d"]["oddsdata"]["back"]["E-1-2-0-0-0"]["odds"]["417"]["1"],
+            3.60
+        );
+    }
+
     fn encode_test_payload(json: &str) -> String {
         let url_encoded = utf8_percent_encode(json, NON_ALPHANUMERIC).to_string();
         let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());

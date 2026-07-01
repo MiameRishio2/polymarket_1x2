@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use chrono::Utc;
+use percent_encoding::percent_decode_str;
 use serde_json::Value;
 
 use crate::oddsportal::models::OddsPortalRecord;
@@ -33,10 +34,20 @@ pub fn normalize_1x2_odds(
     let received_at = Utc::now().to_rfc3339();
     let mut records = Vec::new();
     for market in back.values() {
+        if market
+            .get("bettingTypeId")
+            .is_some_and(|value| !value_is_id(value, 1))
+            || market
+                .get("scopeId")
+                .is_some_and(|value| !value_is_id(value, 2))
+        {
+            continue;
+        }
         let Some(odds_by_bookmaker) = market.get("odds").and_then(Value::as_object) else {
             continue;
         };
         let active = market.get("act").and_then(Value::as_object);
+        let betslips = market.get("bs").and_then(Value::as_object);
 
         for (bookmaker_id, prices) in odds_by_bookmaker {
             if matches!(
@@ -61,6 +72,7 @@ pub fn normalize_1x2_odds(
                     bookmaker_name: provider_names
                         .and_then(|names| names.get(bookmaker_id))
                         .and_then(value_to_string)
+                        .or_else(|| bookmaker_name_from_betslip(betslips, bookmaker_id))
                         .unwrap_or_else(|| bookmaker_id.clone()),
                     outcome: outcome.to_string(),
                     decimal_odds,
@@ -71,6 +83,30 @@ pub fn normalize_1x2_odds(
     }
 
     Ok(records)
+}
+
+fn value_is_id(value: &Value, expected: u64) -> bool {
+    value.as_u64() == Some(expected)
+        || value.as_str().and_then(|value| value.parse::<u64>().ok()) == Some(expected)
+}
+
+fn bookmaker_name_from_betslip(
+    betslips: Option<&serde_json::Map<String, Value>>,
+    bookmaker_id: &str,
+) -> Option<String> {
+    let urls = betslips?.get(bookmaker_id)?.as_object()?;
+    urls.values().filter_map(Value::as_str).find_map(|url| {
+        let mut segments = url.split('/').filter(|segment| !segment.is_empty());
+        while let Some(segment) = segments.next() {
+            if segment == "bookmakers" {
+                let slug = segments.next()?;
+                let decoded = percent_decode_str(slug).decode_utf8().ok()?;
+                let name = decoded.replace('-', " ");
+                return (!name.is_empty()).then_some(name);
+            }
+        }
+        None
+    })
 }
 
 fn string_field(value: &Value, field: &str) -> Option<String> {
@@ -171,5 +207,72 @@ mod tests {
 
         assert_eq!(records.len(), 6);
         assert!(records.iter().all(|record| record.ts == records[0].ts));
+    }
+
+    #[test]
+    fn derives_live_bookmaker_name_from_betslip() {
+        let decoded = serde_json::json!({
+            "d": {
+                "encodeventId": "EZmXxG15",
+                "oddsdata": {
+                    "back": {
+                        "E-1-2-0-0-0": {
+                            "bettingTypeId": 1,
+                            "scopeId": 2,
+                            "odds": {
+                                "417": {"0": 2.87, "1": 3.60, "2": 2.25}
+                            },
+                            "bs": {
+                                "417": {
+                                    "0": "/bookmakers/1xbet/betslip/l/Football/example/"
+                                }
+                            },
+                            "act": {"417": true}
+                        }
+                    }
+                }
+            }
+        });
+
+        let records =
+            normalize_1x2_odds(&decoded, "Home - Away", "https://example.test/live.dat").unwrap();
+
+        assert_eq!(records.len(), 3);
+        assert!(records
+            .iter()
+            .all(|record| record.bookmaker_name == "1xbet"));
+    }
+
+    #[test]
+    fn ignores_non_one_x_two_live_markets() {
+        let decoded = serde_json::json!({
+            "d": {
+                "encodeventId": "EZmXxG15",
+                "oddsdata": {
+                    "back": {
+                        "E-1-2-0-0-0": {
+                            "bettingTypeId": 1,
+                            "scopeId": 2,
+                            "odds": {
+                                "16": {"0": 2.87, "1": 3.60, "2": 2.25}
+                            }
+                        },
+                        "E-5-2-0-0-0": {
+                            "bettingTypeId": 5,
+                            "scopeId": 2,
+                            "odds": {
+                                "16": {"0": 1.80, "1": 2.00, "2": 2.10}
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        let records =
+            normalize_1x2_odds(&decoded, "Home - Away", "https://example.test/live.dat").unwrap();
+
+        assert_eq!(records.len(), 3);
+        assert!(records.iter().all(|record| record.decimal_odds != "1.8"));
     }
 }

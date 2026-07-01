@@ -11,7 +11,7 @@ use std::future::Future;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Context, Result};
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_ENCODING};
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_ENCODING, REFERER};
 use tokio::time::{sleep, Duration, MissedTickBehavior};
 
 pub(crate) const LOG_PREFIX: &str = "[oddsportal]";
@@ -23,7 +23,6 @@ pub async fn run_poll_loop(config: config::Config, interval: Duration) -> Result
     let discovery = discover_requests(&client, &config).await?;
     let odds_client = client.clone();
     let odds_event = discovery.0.clone();
-    let odds_requests = discovery.1.clone();
     let score_client = client.clone();
     let score_event = discovery.0.clone();
     let score_url = discovery.1.score_url.clone();
@@ -40,8 +39,7 @@ pub async fn run_poll_loop(config: config::Config, interval: Duration) -> Result
         move || {
             let client = odds_client.clone();
             let event = odds_event.clone();
-            let requests = odds_requests.clone();
-            async move { collect_odds(&client, &requests, &event).await }
+            async move { collect_odds(&client, &event).await }
         },
         move || {
             let client = score_client.clone();
@@ -65,13 +63,20 @@ pub async fn run_poll_loop(config: config::Config, interval: Duration) -> Result
 }
 
 struct CycleResult {
-    odds: Option<Vec<models::OddsPortalRecord>>,
+    odds: Option<OddsCollection>,
     score: Option<output::OddsPortalScoreObservation>,
+}
+
+#[derive(Debug)]
+enum OddsCollection {
+    Unavailable,
+    Records(Vec<models::OddsPortalRecord>),
 }
 
 #[derive(Debug)]
 struct CycleHandlingStatus {
     odds_succeeded: bool,
+    odds_unavailable: bool,
     score_succeeded: bool,
 }
 
@@ -88,7 +93,7 @@ async fn run_poll_loop_with<Odds, OddsFuture, Score, ScoreFuture, AppendOdds, Em
 ) -> Result<()>
 where
     Odds: FnMut() -> OddsFuture,
-    OddsFuture: Future<Output = Result<Vec<models::OddsPortalRecord>>>,
+    OddsFuture: Future<Output = Result<OddsCollection>>,
     Score: FnMut() -> ScoreFuture,
     ScoreFuture: Future<Output = Result<output::OddsPortalScoreObservation>>,
     AppendOdds: FnMut(&[models::OddsPortalRecord]) -> Result<()>,
@@ -109,11 +114,17 @@ where
         let result = run_one_cycle_with(collect_odds(), collect_score()).await?;
         let status = handle_cycle_with(&result, &mut append_odds, &mut emit_odds, &mut emit_score)?;
         if status.odds_succeeded {
-            let records = result.odds.as_ref().expect("successful odds must exist");
-            crate::diagnostics::write(format_args!(
-                "{LOG_PREFIX} collection pass succeeded with {} records",
-                records.len()
-            ));
+            if status.odds_unavailable {
+                crate::diagnostics::write(format_args!("{LOG_PREFIX} no in-play odds available"));
+            } else {
+                let Some(OddsCollection::Records(records)) = result.odds.as_ref() else {
+                    unreachable!("successful available odds must contain records");
+                };
+                crate::diagnostics::write(format_args!(
+                    "{LOG_PREFIX} collection pass succeeded with {} records",
+                    records.len()
+                ));
+            }
         }
         if status.score_succeeded {
             crate::diagnostics::write(format_args!("{LOG_PREFIX} score collection pass succeeded"));
@@ -127,7 +138,7 @@ async fn run_one_cycle_with<OddsFuture, ScoreFuture>(
     score_future: ScoreFuture,
 ) -> Result<CycleResult>
 where
-    OddsFuture: Future<Output = Result<Vec<models::OddsPortalRecord>>>,
+    OddsFuture: Future<Output = Result<OddsCollection>>,
     ScoreFuture: Future<Output = Result<output::OddsPortalScoreObservation>>,
 {
     let (odds_result, score_result) = tokio::join!(odds_future, score_future);
@@ -165,23 +176,30 @@ where
 {
     let mut first_error = None;
     let mut odds_succeeded = false;
-    if let Some(records) = result.odds.as_ref() {
-        match append_odds(records) {
-            Ok(()) => match emit_odds(records) {
-                Ok(()) => odds_succeeded = true,
+    let mut odds_unavailable = false;
+    if let Some(odds) = result.odds.as_ref() {
+        match odds {
+            OddsCollection::Unavailable => {
+                odds_succeeded = true;
+                odds_unavailable = true;
+            }
+            OddsCollection::Records(records) => match append_odds(records) {
+                Ok(()) => match emit_odds(records) {
+                    Ok(()) => odds_succeeded = true,
+                    Err(error) => {
+                        crate::diagnostics::write(format_args!(
+                            "{LOG_PREFIX} odds output failed: {error:#}"
+                        ));
+                        first_error = Some(error);
+                    }
+                },
                 Err(error) => {
                     crate::diagnostics::write(format_args!(
-                        "{LOG_PREFIX} odds output failed: {error:#}"
+                        "{LOG_PREFIX} odds append failed: {error:#}"
                     ));
                     first_error = Some(error);
                 }
             },
-            Err(error) => {
-                crate::diagnostics::write(format_args!(
-                    "{LOG_PREFIX} odds append failed: {error:#}"
-                ));
-                first_error = Some(error);
-            }
         }
     }
 
@@ -205,6 +223,7 @@ where
     }
     Ok(CycleHandlingStatus {
         odds_succeeded,
+        odds_unavailable,
         score_succeeded,
     })
 }
@@ -277,43 +296,49 @@ fn append_odds_records(
 
 async fn collect_odds(
     client: &reqwest::Client,
-    request: &models::RequestMetadata,
     discovered: &models::DiscoveredMatch,
-) -> Result<Vec<models::OddsPortalRecord>> {
-    let mut urls = vec![request.pre_match_url.clone()];
-    if let Some(fallback_url) = &request.fallback_pre_match_url {
-        urls.push(fallback_url.clone());
+) -> Result<OddsCollection> {
+    let h2h_url = http_request_url(&discovered.h2h_url);
+    let h2h_html = get_text_with_retries(client, &h2h_url, "OddsPortal H2H").await?;
+    let live_url = match discovery::parse_live_odds_request(&h2h_html)? {
+        models::LiveOddsRequestState::Unavailable => return Ok(OddsCollection::Unavailable),
+        models::LiveOddsRequestState::Available { url } => cache_busted_url(&url),
+    };
+    let response = client
+        .get(&live_url)
+        .header(REFERER, &h2h_url)
+        .send()
+        .await
+        .with_context(|| format!("OddsPortal live odds request failed: {live_url}"))?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(OddsCollection::Unavailable);
     }
-
-    let mut last_error = None;
-    for url in urls {
-        let source_url = cache_busted_url(&url);
-        match collect_dat_records_from_url(client, &source_url, discovered).await {
-            Ok(records) if !records.is_empty() => return Ok(records),
-            Ok(_) => {
-                last_error = Some(anyhow!("OddsPortal .dat response contained no 1X2 odds"));
-            }
-            Err(error) => last_error = Some(error),
-        }
+    let dat_body = response
+        .error_for_status()
+        .with_context(|| format!("OddsPortal live odds returned error: {live_url}"))?
+        .text()
+        .await
+        .context("failed to read OddsPortal live odds response")?;
+    let trimmed = dat_body.trim();
+    if trimmed.starts_with("URL:") && trimmed.ends_with("Status: 404") {
+        return Ok(OddsCollection::Unavailable);
     }
-
-    Err(last_error.unwrap_or_else(|| anyhow!("no OddsPortal .dat URLs were available")))
-}
-
-async fn collect_dat_records_from_url(
-    client: &reqwest::Client,
-    source_url: &str,
-    discovered: &models::DiscoveredMatch,
-) -> Result<Vec<models::OddsPortalRecord>> {
-    let dat_body = get_text_once(client, source_url, "OddsPortal .dat").await?;
-    let decoded = decoder::decode_dat_payload(&dat_body)
-        .with_context(|| format!("failed to decode OddsPortal .dat response for {source_url}"))?;
-    odds::normalize_1x2_odds(&decoded, &discovered.event_name, source_url).with_context(|| {
-        format!(
-            "failed to normalize OddsPortal odds for {} ({})",
-            discovered.event_name, discovered.encoded_event_id
-        )
-    })
+    let decoded = decoder::decode_dat_payload(&dat_body).with_context(|| {
+        format!("failed to decode OddsPortal live odds response for {live_url}")
+    })?;
+    let records = odds::normalize_1x2_odds(&decoded, &discovered.event_name, &live_url)
+        .with_context(|| {
+            format!(
+                "failed to normalize OddsPortal live odds for {} ({})",
+                discovered.event_name, discovered.encoded_event_id
+            )
+        })?;
+    if records.is_empty() {
+        return Err(anyhow!(
+            "OddsPortal live odds response contained no active 1X2 odds"
+        ));
+    }
+    Ok(OddsCollection::Records(records))
 }
 
 async fn collect_score(
@@ -411,14 +436,21 @@ async fn get_text_with_retries(client: &reqwest::Client, url: &str, label: &str)
 }
 
 fn cache_busted_url(url: &str) -> String {
-    if !url.ends_with("_=") {
+    let open_param = if url.ends_with("_=") {
+        Some(url.len())
+    } else {
+        url.find("_=&").map(|index| index + 2)
+    };
+    let Some(insert_at) = open_param else {
         return url.to_string();
-    }
+    };
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
         .unwrap_or_default();
-    format!("{url}{millis}")
+    let mut cache_busted = url.to_string();
+    cache_busted.insert_str(insert_at, &millis.to_string());
+    cache_busted
 }
 
 fn http_request_url(url: &str) -> String {
@@ -516,7 +548,7 @@ mod tests {
                     "received_at": "2026-06-30T12:00:00.000Z"
                 }))
                 .unwrap();
-                Ok(vec![odds_fixture()])
+                Ok(OddsCollection::Records(vec![odds_fixture()]))
             },
             || async { Ok(score_fixture()) },
             |_| Ok(()),
@@ -553,7 +585,7 @@ mod tests {
             test_discovery(),
             move || {
                 first_pass.take().unwrap().send(()).unwrap();
-                async { Ok(Vec::new()) }
+                async { Ok(OddsCollection::Unavailable) }
             },
             || async { Ok(score_fixture()) },
             |_| Ok(()),
@@ -577,7 +609,7 @@ mod tests {
             test_discovery(),
             move || {
                 observed.fetch_add(1, Ordering::SeqCst);
-                async { Ok(Vec::new()) }
+                async { Ok(OddsCollection::Unavailable) }
             },
             || async { Ok(score_fixture()) },
             |_| Ok(()),
@@ -680,9 +712,10 @@ mod tests {
     async fn score_failure_still_appends_and_emits_odds() {
         let odds_appends = AtomicUsize::new(0);
         let odds_outputs = AtomicUsize::new(0);
-        let result = run_one_cycle_with(async { Ok(vec![odds_fixture()]) }, async {
-            Err(anyhow!("score failed"))
-        })
+        let result = run_one_cycle_with(
+            async { Ok(OddsCollection::Records(vec![odds_fixture()])) },
+            async { Err(anyhow!("score failed")) },
+        )
         .await
         .unwrap();
 
@@ -705,11 +738,35 @@ mod tests {
     }
 
     #[test]
+    fn unavailable_odds_skips_odds_sinks_and_emits_score() {
+        let score_outputs = AtomicUsize::new(0);
+        let result = CycleResult {
+            odds: Some(OddsCollection::Unavailable),
+            score: Some(score_fixture()),
+        };
+
+        let status = handle_cycle_with(
+            &result,
+            |_| unreachable!("unavailable odds must not be appended"),
+            |_| unreachable!("unavailable odds must not be emitted"),
+            |_| {
+                score_outputs.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert!(status.odds_succeeded);
+        assert!(status.odds_unavailable);
+        assert_eq!(score_outputs.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
     fn odds_append_failure_short_circuits_grouped_output_and_processes_score() {
         let grouped_outputs = AtomicUsize::new(0);
         let score_outputs = AtomicUsize::new(0);
         let result = CycleResult {
-            odds: Some(vec![odds_fixture()]),
+            odds: Some(OddsCollection::Records(vec![odds_fixture()])),
             score: Some(score_fixture()),
         };
 
@@ -735,7 +792,7 @@ mod tests {
     #[test]
     fn stdout_sink_failures_mark_each_side_failed() {
         let result = CycleResult {
-            odds: Some(vec![odds_fixture()]),
+            odds: Some(OddsCollection::Records(vec![odds_fixture()])),
             score: Some(score_fixture()),
         };
 
@@ -754,7 +811,7 @@ mod tests {
     fn first_sink_failure_is_returned_after_peer_processing() {
         let score_outputs = AtomicUsize::new(0);
         let result = CycleResult {
-            odds: Some(vec![odds_fixture()]),
+            odds: Some(OddsCollection::Records(vec![odds_fixture()])),
             score: Some(score_fixture()),
         };
 
@@ -800,7 +857,7 @@ mod tests {
             Duration::from_secs(60),
             Some(1),
             test_discovery(),
-            || async { Ok(vec![odds_fixture()]) },
+            || async { Ok(OddsCollection::Records(vec![odds_fixture()])) },
             || async { Ok(score_fixture()) },
             |_| Err(anyhow!("terminal append failure")),
             |_| unreachable!("append failure must short-circuit grouped output"),
@@ -849,7 +906,7 @@ mod tests {
             Duration::from_secs(60),
             Some(1),
             test_discovery(),
-            || async { Ok(vec![odds_fixture()]) },
+            || async { Ok(OddsCollection::Records(vec![odds_fixture()])) },
             || async { Ok(score_fixture()) },
             |_| Err(anyhow!("terminal append failure")),
             |_| unreachable!("append failure must short-circuit grouped output"),
@@ -958,57 +1015,93 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn odds_uses_fallback_once_after_one_primary_failure() {
-        let primary = TestHttpServer::start(500, "nope").await;
-        let fallback = TestHttpServer::start(200, &encoded_odds_payload()).await;
+    async fn live_odds_request_uses_h2h_referer() {
+        let live = TestHttpServer::start(200, &encoded_odds_payload()).await;
+        let h2h_body = format!(
+            r#"<Event :data="{{&quot;eventData&quot;:{{
+              &quot;isLive&quot;:true,&quot;realLive&quot;:true}},
+              &quot;requestLive&quot;:{{
+              &quot;url&quot;:&quot;{}&quot;}}}}">
+              </Event>"#,
+            live.url
+        );
+        let h2h = TestHttpServer::start(200, &h2h_body).await;
         let client = test_client();
-        let mut requests = test_discovery().1;
-        requests.pre_match_url = primary.url.clone();
-        requests.fallback_pre_match_url = Some(fallback.url.clone());
+        let mut event = test_discovery().0;
+        event.h2h_url = h2h.url.clone();
 
-        let records = collect_odds(&client, &requests, &test_discovery().0)
-            .await
-            .unwrap();
+        let result = collect_odds(&client, &event).await.unwrap();
 
-        assert_eq!(records.len(), 3);
-        assert_eq!(primary.request_count(), 1);
-        assert_eq!(fallback.request_count(), 1);
+        assert!(matches!(result, OddsCollection::Records(records) if records.len() == 3));
+        assert_eq!(h2h.request_count(), 1);
+        assert_eq!(live.request_count(), 1);
+        assert!(live
+            .last_request()
+            .to_ascii_lowercase()
+            .contains(&format!("referer: {}", h2h.url).to_ascii_lowercase()));
     }
 
     #[tokio::test]
-    async fn odds_does_not_use_fallback_after_primary_success() {
-        let primary = TestHttpServer::start(200, &encoded_odds_payload()).await;
-        let fallback = TestHttpServer::start(200, &encoded_odds_payload()).await;
+    async fn non_live_match_returns_unavailable_without_live_request() {
+        let h2h = TestHttpServer::start(
+            200,
+            r#"<Event :data="{&quot;eventData&quot;:{
+              &quot;isLive&quot;:false,&quot;realLive&quot;:false}}">
+              </Event>"#,
+        )
+        .await;
         let client = test_client();
-        let mut requests = test_discovery().1;
-        requests.pre_match_url = primary.url.clone();
-        requests.fallback_pre_match_url = Some(fallback.url.clone());
+        let mut event = test_discovery().0;
+        event.h2h_url = h2h.url.clone();
 
-        let records = collect_odds(&client, &requests, &test_discovery().0)
-            .await
-            .unwrap();
+        let result = collect_odds(&client, &event).await.unwrap();
 
-        assert_eq!(records.len(), 3);
-        assert_eq!(primary.request_count(), 1);
-        assert_eq!(fallback.request_count(), 0);
+        assert!(matches!(result, OddsCollection::Unavailable));
+        assert_eq!(h2h.request_count(), 1);
     }
 
     #[tokio::test]
-    async fn odds_uses_fallback_once_after_empty_primary_response() {
-        let primary = TestHttpServer::start(200, &encoded_empty_odds_payload()).await;
-        let fallback = TestHttpServer::start(200, &encoded_odds_payload()).await;
+    async fn live_odds_404_returns_unavailable() {
+        let live = TestHttpServer::start(404, "not found").await;
+        let h2h_body = format!(
+            r#"<Event :data="{{&quot;eventData&quot;:{{
+              &quot;isLive&quot;:true,&quot;realLive&quot;:true}},
+              &quot;requestLive&quot;:{{
+              &quot;url&quot;:&quot;{}&quot;}}}}">
+              </Event>"#,
+            live.url
+        );
+        let h2h = TestHttpServer::start(200, &h2h_body).await;
         let client = test_client();
-        let mut requests = test_discovery().1;
-        requests.pre_match_url = primary.url.clone();
-        requests.fallback_pre_match_url = Some(fallback.url.clone());
+        let mut event = test_discovery().0;
+        event.h2h_url = h2h.url.clone();
 
-        let records = collect_odds(&client, &requests, &test_discovery().0)
-            .await
-            .unwrap();
+        let result = collect_odds(&client, &event).await.unwrap();
 
-        assert_eq!(records.len(), 3);
-        assert_eq!(primary.request_count(), 1);
-        assert_eq!(fallback.request_count(), 1);
+        assert!(matches!(result, OddsCollection::Unavailable));
+        assert_eq!(live.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn proxy_wrapped_live_odds_404_returns_unavailable() {
+        let live =
+            TestHttpServer::start(200, "URL:/feed/live-event/1-EZmXxG15.dat?_= Status: 404").await;
+        let h2h_body = format!(
+            r#"<Event :data="{{&quot;eventData&quot;:{{
+              &quot;isLive&quot;:true,&quot;realLive&quot;:true}},
+              &quot;requestLive&quot;:{{
+              &quot;url&quot;:&quot;{}&quot;}}}}">
+              </Event>"#,
+            live.url
+        );
+        let h2h = TestHttpServer::start(200, &h2h_body).await;
+        let client = test_client();
+        let mut event = test_discovery().0;
+        event.h2h_url = h2h.url.clone();
+
+        let result = collect_odds(&client, &event).await.unwrap();
+
+        assert!(matches!(result, OddsCollection::Unavailable));
     }
 
     #[test]
@@ -1017,6 +1110,15 @@ mod tests {
 
         assert!(url.starts_with("https://www.oddsportal.com/match-event/test.dat?_="));
         assert!(url.len() > "https://www.oddsportal.com/match-event/test.dat?_=".len());
+    }
+
+    #[test]
+    fn cache_busted_url_fills_open_param_before_geo_query() {
+        let url = cache_busted_url("https://www.oddsportal.com/feed/live-event/test.dat?_=&geo=JP");
+
+        assert!(url.starts_with("https://www.oddsportal.com/feed/live-event/test.dat?_="));
+        assert!(url.ends_with("&geo=JP"));
+        assert!(!url.contains("?_=&geo=JP"));
     }
 
     #[test]
@@ -1045,7 +1147,7 @@ mod tests {
         active: Arc<AtomicUsize>,
         max_active: Arc<AtomicUsize>,
         gate: Arc<tokio::sync::Semaphore>,
-    ) -> impl FnMut() -> BoxResultFuture<Vec<models::OddsPortalRecord>> {
+    ) -> impl FnMut() -> BoxResultFuture<OddsCollection> {
         move || {
             let calls = Arc::clone(&calls);
             let active = Arc::clone(&active);
@@ -1058,7 +1160,7 @@ mod tests {
                 let permit = gate.acquire().await.unwrap();
                 permit.forget();
                 active.fetch_sub(1, Ordering::SeqCst);
-                Ok(vec![odds_fixture()])
+                Ok(OddsCollection::Records(vec![odds_fixture()]))
             })
         }
     }
@@ -1094,8 +1196,6 @@ mod tests {
                 encoded_event_id: "EZmXxG15".to_string(),
             },
             models::RequestMetadata {
-                pre_match_url: "https://www.oddsportal.com/match-event/test.dat".to_string(),
-                fallback_pre_match_url: None,
                 score_url: Some(
                     "https://www.oddsportal.com/feed/postmatch-score/test.dat".to_string(),
                 ),
@@ -1220,10 +1320,6 @@ mod tests {
     fn encoded_odds_payload() -> String {
         let json = r#"{"d":{"encodeventId":"EZmXxG15","oddsdata":{"back":{"0":{"odds":{"16":{"0":"5.50","1":"3.80","2":"1.62"}},"act":{"16":true}}}},"providersNames":{"16":"bet365"}}}"#;
         encode_dat_payload(json)
-    }
-
-    fn encoded_empty_odds_payload() -> String {
-        encode_dat_payload(r#"{"d":{"encodeventId":"EZmXxG15","oddsdata":{"back":{}}}}"#)
     }
 
     fn encode_dat_payload(json: &str) -> String {

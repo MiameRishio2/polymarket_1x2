@@ -15,9 +15,13 @@ pub struct DiscoveredMatch {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RequestMetadata {
-    pub pre_match_url: String,
-    pub fallback_pre_match_url: Option<String>,
     pub score_url: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LiveOddsRequestState {
+    Unavailable,
+    Available { url: String },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

@@ -1,12 +1,11 @@
 use anyhow::{anyhow, bail, Context, Result};
 use html_escape::decode_html_entities;
-use percent_encoding::percent_decode_str;
 use scraper::{Html, Selector};
 use serde::Deserialize;
 use url::Url;
 
 use crate::oddsportal::config::DEFAULT_BASE_URL;
-use crate::oddsportal::models::{DiscoveredMatch, RequestMetadata};
+use crate::oddsportal::models::{DiscoveredMatch, LiveOddsRequestState, RequestMetadata};
 
 pub fn parse_tournament_match(html: &str, home: &str, away: &str) -> Result<DiscoveredMatch> {
     let document = Html::parse_document(html);
@@ -47,31 +46,26 @@ pub fn parse_tournament_match(html: &str, home: &str, away: &str) -> Result<Disc
 
 pub fn parse_h2h_request_metadata(html: &str) -> Result<RequestMetadata> {
     let decoded = decode_attr(html);
-    let raw_url = find_request_url(&decoded, "requestPreMatch")
-        .ok_or_else(|| anyhow!("OddsPortal H2H page missing requestPreMatch.url"))?
-        .replace("\\/", "/");
-    let fallback_pre_match_url = absolute_url(DEFAULT_BASE_URL, &raw_url)?;
-    let pre_match_url = find_json_string(&decoded, r#""xhash":""#)
-        .and_then(|hash| {
-            percent_decode_str(&hash)
-                .decode_utf8()
-                .ok()
-                .map(|hash| hash.to_string())
-        })
-        .filter(|hash| !hash.is_empty())
-        .and_then(|hash| pre_match_url_with_hash(&fallback_pre_match_url, &hash).ok())
-        .unwrap_or_else(|| fallback_pre_match_url.clone());
     let score_url = find_request_url(&decoded, "updateScoreRequest")
         .map(|raw| raw.replace("\\/", "/"))
         .map(|raw| absolute_url(DEFAULT_BASE_URL, &raw))
         .transpose()?;
 
-    Ok(RequestMetadata {
-        fallback_pre_match_url: (pre_match_url != fallback_pre_match_url)
-            .then_some(fallback_pre_match_url),
-        pre_match_url,
-        score_url,
-    })
+    Ok(RequestMetadata { score_url })
+}
+
+pub fn parse_live_odds_request(html: &str) -> Result<LiveOddsRequestState> {
+    let decoded = decode_attr(html);
+    if !find_json_bool(&decoded, "isLive").unwrap_or(false)
+        || !find_json_bool(&decoded, "realLive").unwrap_or(false)
+    {
+        return Ok(LiveOddsRequestState::Unavailable);
+    }
+    let Some(raw_url) = find_request_url(&decoded, "requestLive") else {
+        return Ok(LiveOddsRequestState::Unavailable);
+    };
+    let url = absolute_url(DEFAULT_BASE_URL, &raw_url.replace("\\/", "/"))?;
+    Ok(LiveOddsRequestState::Available { url })
 }
 
 fn absolute_url(base_url: &str, maybe_relative: &str) -> Result<String> {
@@ -93,19 +87,6 @@ fn extract_hash(url: &str) -> Option<String> {
                 .map(|fragment| fragment.trim_matches('/').to_string())
         })
         .filter(|hash| !hash.is_empty())
-}
-
-fn pre_match_url_with_hash(url: &str, hash: &str) -> Result<String> {
-    let mut parsed = Url::parse(url).context("invalid OddsPortal pre-match URL")?;
-    let path = parsed.path();
-    let Some((prefix, _suffix)) = path.rsplit_once(".dat") else {
-        return Ok(url.to_string());
-    };
-    let Some((base, _old_hash)) = prefix.rsplit_once('-') else {
-        return Ok(url.to_string());
-    };
-    parsed.set_path(&format!("{base}-{hash}.dat"));
-    Ok(parsed.to_string())
 }
 
 fn parse_match_from_embedded_text(
@@ -161,11 +142,16 @@ fn find_json_strings(text: &str, marker: &str) -> Vec<String> {
     values
 }
 
-fn find_json_string(text: &str, marker: &str) -> Option<String> {
-    let start = text.find(marker)? + marker.len();
-    let tail = &text[start..];
-    let end = tail.find('"')?;
-    Some(tail[..end].to_string())
+fn find_json_bool(text: &str, field: &str) -> Option<bool> {
+    let marker = format!(r#""{field}":"#);
+    let value = text.get(text.find(&marker)? + marker.len()..)?;
+    if value.starts_with("true") {
+        Some(true)
+    } else if value.starts_with("false") {
+        Some(false)
+    } else {
+        None
+    }
 }
 
 fn find_request_url(text: &str, request_name: &str) -> Option<String> {
@@ -208,20 +194,54 @@ mod tests {
     }
 
     #[test]
-    fn extracts_request_pre_match_url_from_h2h_state() {
-        let html = r#"<event :data="{&quot;requestPreMatch&quot;:{&quot;url&quot;:&quot;\/match-event\/1-1-bsJSJ30L-1-2-yj159.dat?_=&quot;}}"></event>"#;
-
-        let metadata = parse_h2h_request_metadata(html).unwrap();
+    fn live_match_uses_request_live_and_ignores_pre_match_url() {
+        let html = r#"<Event :data="{&quot;eventData&quot;:{
+          &quot;isLive&quot;:true,&quot;realLive&quot;:true},
+          &quot;requestPreMatch&quot;:{
+          &quot;url&quot;:&quot;\/match-event\/ignored.dat?_=&quot;},
+          &quot;requestLive&quot;:{
+          &quot;url&quot;:&quot;\/feed\/live-event\/1-1-EZmXxG15-1-2-yjlive.dat?_=&amp;geo=JP&quot;}}">
+          </Event>"#;
 
         assert_eq!(
-            metadata.pre_match_url,
-            "https://www.oddsportal.com/match-event/1-1-bsJSJ30L-1-2-yj159.dat?_="
+            parse_live_odds_request(html).unwrap(),
+            crate::oddsportal::models::LiveOddsRequestState::Available {
+                url: "https://www.oddsportal.com/feed/live-event/1-1-EZmXxG15-1-2-yjlive.dat?_=&geo=JP"
+                    .to_string(),
+            }
         );
-        assert_eq!(metadata.fallback_pre_match_url, None);
     }
 
     #[test]
-    fn extracts_odds_and_score_request_urls_independently() {
+    fn non_live_match_is_unavailable_even_with_request_live() {
+        let html = r#"<Event :data="{&quot;eventData&quot;:{
+          &quot;isLive&quot;:false,&quot;realLive&quot;:true},
+          &quot;requestLive&quot;:{
+          &quot;url&quot;:&quot;\/feed\/live-event\/test.dat?_=&quot;}}">
+          </Event>"#;
+
+        assert_eq!(
+            parse_live_odds_request(html).unwrap(),
+            crate::oddsportal::models::LiveOddsRequestState::Unavailable
+        );
+    }
+
+    #[test]
+    fn live_match_without_request_live_is_unavailable() {
+        let html = r#"<Event :data="{&quot;eventData&quot;:{
+          &quot;isLive&quot;:true,&quot;realLive&quot;:true},
+          &quot;requestPreMatch&quot;:{
+          &quot;url&quot;:&quot;\/match-event\/ignored.dat?_=&quot;}}">
+          </Event>"#;
+
+        assert_eq!(
+            parse_live_odds_request(html).unwrap(),
+            crate::oddsportal::models::LiveOddsRequestState::Unavailable
+        );
+    }
+
+    #[test]
+    fn extracts_score_request_when_pre_match_data_is_present() {
         let html = r#"<Event :data="{&quot;requestPreMatch&quot;:{
           &quot;url&quot;:&quot;\/match-event\/1-1-EZmXxG15-1-2-yj93f.dat?_=&quot;},
           &quot;updateScoreRequest&quot;:{
@@ -237,42 +257,16 @@ mod tests {
     }
 
     #[test]
-    fn missing_score_url_does_not_hide_odds_url() {
-        let html = r#"<event :data="{&quot;requestPreMatch&quot;:{&quot;url&quot;:&quot;\/match-event\/1-1-bsJSJ30L-1-2-yj159.dat?_=&quot;}}"></event>"#;
-
-        let metadata = parse_h2h_request_metadata(html).unwrap();
-
-        assert!(metadata.pre_match_url.contains("/match-event/"));
-        assert_eq!(metadata.score_url, None);
-    }
-
-    #[test]
-    fn uses_frontend_xhash_before_request_pre_match_fallback() {
-        let html = r#"<Event :data="{&quot;eventData&quot;:{&quot;xhash&quot;:&quot;%79%6a%31%35%39&quot;,&quot;xhashf&quot;:&quot;%79%6a%34%34%64&quot;},&quot;requestPreMatch&quot;:{&quot;url&quot;:&quot;\/match-event\/1-1-bsJSJ30L-1-2-yj44d.dat?_=&quot;}}"></Event>"#;
+    fn score_metadata_does_not_require_pre_match_request() {
+        let html = r#"<Event :data="{&quot;updateScoreRequest&quot;:{
+          &quot;url&quot;:&quot;\/feed\/postmatch-score\/1-EZmXxG15-yj93f.dat?_=&quot;}}">
+          </Event>"#;
 
         let metadata = parse_h2h_request_metadata(html).unwrap();
 
         assert_eq!(
-            metadata.pre_match_url,
-            "https://www.oddsportal.com/match-event/1-1-bsJSJ30L-1-2-yj159.dat?_="
-        );
-        assert_eq!(
-            metadata.fallback_pre_match_url,
-            Some(
-                "https://www.oddsportal.com/match-event/1-1-bsJSJ30L-1-2-yj44d.dat?_=".to_string()
-            )
-        );
-    }
-
-    #[test]
-    fn uses_frontend_xhash_from_backslash_escaped_h2h_data() {
-        let html = r#"<Event :data="{\&quot;eventData\&quot;:{\&quot;xhash\&quot;:\&quot;%79%6a%31%35%39\&quot;},\&quot;requestPreMatch\&quot;:{\&quot;url\&quot;:\&quot;\/match-event\/1-1-bsJSJ30L-1-2-yj44d.dat?_=\&quot;}}"></Event>"#;
-
-        let metadata = parse_h2h_request_metadata(html).unwrap();
-
-        assert_eq!(
-            metadata.pre_match_url,
-            "https://www.oddsportal.com/match-event/1-1-bsJSJ30L-1-2-yj159.dat?_="
+            metadata.score_url.as_deref(),
+            Some("https://www.oddsportal.com/feed/postmatch-score/1-EZmXxG15-yj93f.dat?_=")
         );
     }
 
