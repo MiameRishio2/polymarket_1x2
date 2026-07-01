@@ -52,7 +52,7 @@ mod tests {
             bookmaker_name: "bet365".to_string(),
             outcome: "X".to_string(),
             decimal_odds: "3.70".to_string(),
-            source_url: "https://www.oddsportal.com/match-event/test.dat".to_string(),
+            source_url: "https://www.oddsportal.com/feed/live-event/test.dat".to_string(),
         };
 
         let json = serde_json::to_value(&record).unwrap();

@@ -147,7 +147,7 @@ mod tests {
         let records = normalize_1x2_odds(
             &decoded,
             "Norway - France",
-            "https://www.oddsportal.com/match-event/test.dat",
+            "https://www.oddsportal.com/feed/live-event/test.dat",
         )
         .unwrap();
 

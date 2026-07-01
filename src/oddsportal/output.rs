@@ -184,7 +184,7 @@ mod tests {
             bookmaker_name: bookmaker_name.to_string(),
             outcome: outcome.to_string(),
             decimal_odds: decimal_odds.to_string(),
-            source_url: "https://www.oddsportal.com/match-event/test.dat".to_string(),
+            source_url: "https://www.oddsportal.com/feed/live-event/test.dat".to_string(),
         }
     }
 }

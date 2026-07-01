@@ -62,7 +62,7 @@ mod tests {
             bookmaker_name: "bet365".to_string(),
             outcome: "1".to_string(),
             decimal_odds: "4.20".to_string(),
-            source_url: "https://www.oddsportal.com/match-event/test.dat".to_string(),
+            source_url: "https://www.oddsportal.com/feed/live-event/test.dat".to_string(),
         }
     }
 }

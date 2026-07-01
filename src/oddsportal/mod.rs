@@ -1106,10 +1106,10 @@ mod tests {
 
     #[test]
     fn cache_busted_url_appends_timestamp_to_open_cache_param() {
-        let url = cache_busted_url("https://www.oddsportal.com/match-event/test.dat?_=");
+        let url = cache_busted_url("https://www.oddsportal.com/feed/live-event/test.dat?_=");
 
-        assert!(url.starts_with("https://www.oddsportal.com/match-event/test.dat?_="));
-        assert!(url.len() > "https://www.oddsportal.com/match-event/test.dat?_=".len());
+        assert!(url.starts_with("https://www.oddsportal.com/feed/live-event/test.dat?_="));
+        assert!(url.len() > "https://www.oddsportal.com/feed/live-event/test.dat?_=".len());
     }
 
     #[test]
@@ -1123,7 +1123,7 @@ mod tests {
 
     #[test]
     fn cache_busted_url_leaves_complete_url_unchanged() {
-        let url = "https://www.oddsportal.com/match-event/test.dat?_=123";
+        let url = "https://www.oddsportal.com/feed/live-event/test.dat?_=123";
 
         assert_eq!(cache_busted_url(url), url);
     }
@@ -1213,7 +1213,7 @@ mod tests {
             bookmaker_name: "bet365".to_string(),
             outcome: "1".to_string(),
             decimal_odds: "5.50".to_string(),
-            source_url: "https://www.oddsportal.com/match-event/test.dat".to_string(),
+            source_url: "https://www.oddsportal.com/feed/live-event/test.dat".to_string(),
         }
     }
 
